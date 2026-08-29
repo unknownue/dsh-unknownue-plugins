@@ -1,0 +1,19 @@
+# dsh-unknownue-plugins bundle patch: the personal aggregation layer.
+#
+# One row per feature, each `name` pointing at a subpath export of this very
+# package (same mechanism as the official `dsh-tool-subagent-control/list-agents`
+# subpath row). Installing this ONE bundle pulls in and mounts every feature.
+#
+# Install: dsh plugin --profile web add github:unknownue/dsh-unknownue-plugins
+- insert:
+    # Feature #1: Makefile target discovery + execution (host API + browser UI).
+    # The row name must be the package name: the client module system discovers
+    # the browser half (lib/client.js) through this package's dsh.client manifest.
+    - id: dsh-unknownue-plugins
+      name: 'dsh-unknownue-plugins'
+      config:
+        # Command (or command prefix) that runs make. Set to "wsl make" (or a
+        # full path) when the Makefile lives inside a WSL distro.
+        makeBinary: make
+        # Default Makefile name/path, resolved against the session's workdir.
+        makefile: Makefile
