@@ -6,20 +6,60 @@
 #
 # Install: dsh plugin --profile web add github:unknownue/dsh-unknownue-plugins
 - insert:
+    # ──────────────────────────────────────────────────────────────────────
     # Feature #1: Makefile target discovery (display-only; host API + browser UI).
-    # The row name must be the package name: the client module system discovers
-    # the browser half (lib/client.js) through this package's dsh.client manifest.
+    # ──────────────────────────────────────────────────────────────────────
     - id: dsh-unknownue-plugins
       name: 'dsh-unknownue-plugins'
       config:
-        # Default Makefile name/path, resolved against the session's workdir.
         makefile: Makefile
-        # Remote hosts are managed via the UI and stored in ~/.dsh/remote-hosts.json
-        # No configuration needed here — click the → button in session header to add hosts.
 
-    # Feature #5: Authenticated gateway for remote DSH access.
-    # Bundled from dsh-gateway — provides password-protected reverse proxy
-    # with WebSocket tunneling, so remote sessions work exactly like local.
+    # ──────────────────────────────────────────────────────────────────────
+    # Feature #2: SSH remote workspaces (via dsh-workspace-enhancement).
+    # Provides: ctx.ssh / ctx.subprocess / ctx.fs transparent remote providers,
+    # multi-workspace sessions, cross-server execution, machine management.
+    # ──────────────────────────────────────────────────────────────────────
+
+    # Disable default directory picker (SSH client UI takes over)
+    - id: directory-picker
+      name: '@deepseek-ai/dsh-host-directory-picker-auto'
+      disabled: true
+
+    # Disable local providers (mixed provider handles both local + remote)
+    - id: subprocess
+      name: '@deepseek-ai/dsh-subprocess-local'
+      disabled: true
+
+    - id: fs-sandbox
+      name: '@deepseek-ai/dsh-fs-sandbox'
+      disabled: true
+
+    # SSH remote provider (placeholder connection, lazy establishment)
+    - id: ssh-remote
+      name: dsh-workspace-enhancement
+      config:
+        host: 127.0.0.1
+        port: 22
+        username: ssh
+        cwd: /tmp
+
+    # Directory picker for local/remote browsing
+    - id: directory-picker-ssh
+      name: dsh-workspace-enhancement/picker
+      config:
+        maxEntries: 1000
+
+    # Multi-connection registry + /dsw RPC (persistence, connection management)
+    - id: ssh-web-channel
+      name: dsh-workspace-enhancement/web
+      config:
+        maxEntries: 1000
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Feature #3: Authenticated gateway for remote DSH access (via dsh-gateway).
+    # Password-protected reverse proxy with WebSocket tunneling.
+    # Remote sessions work exactly like sitting at the machine.
+    # ──────────────────────────────────────────────────────────────────────
     - id: gateway
       name: 'dsh-gateway'
       inject: ['webServer']

@@ -39,25 +39,26 @@ session's workspace (Windows: `cmd`; macOS: Terminal.app; Linux:
 `x-terminal-emulator`). It calls a host loopback route
 (`POST /dsh-unknownue-plugins/terminal/api`).
 
-### 5. Remote control via SSH
+### 5. SSH remote workspaces (via dsh-workspace-enhancement)
 
-A session-header button opens a remote-control panel that connects to
-configured machines through `~/.ssh/config` aliases:
+Manage local and remote (SSH) workspaces in one place. A session can hold
+**multiple workspaces** (a main cwd plus side directories), each with its own
+permissions.
 
-- **Command execution** — run any shell command on a remote machine, view
-  stdout/stderr inline.
-- **File transfer** — upload files from your local machine or download from
-  the remote via SCP.
-- **Tunnel management** — monitor a reverse SSH tunnel (port status +
-  systemd service), restart / stop / start from the UI.
-- **Multi-host** — configure multiple remote machines, switch between them
-  with a button bar; each host's reachability is checked live.
-- **Host management** — add, edit, remove hosts directly from the UI; test
-  connections before saving. Host configs are stored in
-  `~/.dsh/remote-hosts.json`.
+- **Remote workspaces** — `ctx.subprocess` + `ctx.fs` transparent remote
+  providers: one SSH chain (multi-hop) runs bash / files / PTY / directory
+  browsing with no code changes on the tools
+- **Multi-workspace sessions** — attach one or more side workspaces (local dirs
+  or remote machine dirs) to a session, each with its own permission (`fs:
+  read-only / read-write` + `exec: on / off`)
+- **Machine settings** — add / edit / delete / test connections; TOFU host keys
+  and OS-keychain passwords
+- **Cross-server execution** — `sw_exec(server, command)` runs a command on a
+  named server
+- **Model tools** — `sw_status`, `sw_connect`, `sw_pick_workspace`, `sw_exec`
 
-All connection details (host, port, user, key) are stored locally — no
-credentials are stored in this plugin or sent anywhere.
+See [dsh-workspace-enhancement](https://github.com/DobyChao/dsh-workspace-enhancement)
+for full documentation.
 
 ### 6. Remote DSH gateway (via dsh-gateway)
 
@@ -78,14 +79,57 @@ Access at `http://<your-ip>:8642` after setting a password. See
 dsh plugin --profile web add github:unknownue/dsh-unknownue-plugins
 ```
 
-Restart `dsh web`, refresh the page. The Makefile, open-workspace,
-open-terminal, and remote-control buttons appear in the session header;
-the width control appears in the sidebar footer.
+Restart `dsh web`, refresh the page. The Makefile, open-workspace, and
+open-terminal buttons appear in the session header; the width control appears
+in the sidebar footer; the workspace enhancement adds remote workspace
+capabilities to the native workspace picker.
+
+> **First install with DSH's supply-chain pnpm**: native build scripts are
+> blocked by default — allow them once per profile in `pnpm-workspace.yaml`
+> (unstrict `allowBuilds`): `ssh2`, `cpu-features`, `koffi`, `node-pty`,
+> `dsh-subprocess-local` — then run `dsh plugin --profile web install`.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  dsh-unknownue-plugins (bundle)                             │
+│                                                             │
+│  ┌──────────────┐  ┌──────────────────┐  ┌──────────────┐  │
+│  │ Makefile     │  │ Content Width    │  │ Open Dir/    │  │
+│  │ Panel        │  │ Control          │  │ Terminal     │  │
+│  └──────────────┘  └──────────────────┘  └──────────────┘  │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  dsh-workspace-enhancement (dependency)               │  │
+│  │  ┌─────────────────────────────────────────────────┐  │  │
+│  │  │ ctx.subprocess / ctx.fs (mixed provider)         │  │  │
+│  │  │   local ←→ remote (SSH) transparent routing      │  │  │
+│  │  └─────────────────────────────────────────────────┘  │  │
+│  │  ┌─────────────────────────────────────────────────┐  │  │
+│  │  │ Machine Registry + Web UI                        │  │  │
+│  │  │   add/edit/delete/test machines                  │  │  │
+│  │  │   multi-workspace sessions                       │  │  │
+│  │  │   cross-server execution                         │  │  │
+│  │  └─────────────────────────────────────────────────┘  │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  dsh-gateway (dependency)                             │  │
+│  │  ┌─────────────────────────────────────────────────┐  │  │
+│  │  │ Authenticated reverse proxy                      │  │  │
+│  │  │   password auth + session cookie                 │  │  │
+│  │  │   WebSocket tunneling                            │  │  │
+│  │  │   Host/Origin rewriting                          │  │  │
+│  │  └─────────────────────────────────────────────────┘  │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Configuration
 
 The bundle patch (`cordis.patch.yml`) seeds these defaults; override them in the
-profile's `cordis.patch.yml` (row id `dsh-unknownue-plugins`):
+profile's `cordis.patch.yml`.
 
 ### Makefile
 
@@ -93,11 +137,12 @@ profile's `cordis.patch.yml` (row id `dsh-unknownue-plugins`):
 |-----|---------|---------|
 | `makefile` | `Makefile` | Default Makefile name/path, resolved against the session's workdir. |
 
-### Remote control
+### SSH Remote Workspaces
 
-Remote hosts are managed via the UI (click the `→` button in session header).
-Host configurations are stored in `~/.dsh/remote-hosts.json` — no manual
-configuration needed.
+Configuration is managed via the DSH UI (Settings → Remote Workspace). Machines
+are stored in `~/.dsh/remote-workspaces/machines.json`. See
+[dsh-workspace-enhancement](https://github.com/DobyChao/dsh-workspace-enhancement)
+for full configuration reference.
 
 ### Gateway
 
