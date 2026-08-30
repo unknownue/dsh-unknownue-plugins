@@ -1,7 +1,7 @@
 {
   "name": "dsh-unknownue-plugins",
   "version": "0.1.0",
-  "description": "Personal DSH plugin bundle (unknownue): aggregates my personal DSH plugins into one install. Features: Makefile panel (UI + host execution) and content-width control (merged from dsh-ui-width).",
+  "description": "Personal DSH plugin bundle (unknownue): aggregates my personal DSH plugins into one install. Features: Makefile target panel (display-only), content-width control (merged from dsh-ui-width), open-workspace button.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

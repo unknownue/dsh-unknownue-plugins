@@ -6,14 +6,11 @@
 #
 # Install: dsh plugin --profile web add github:unknownue/dsh-unknownue-plugins
 - insert:
-    # Feature #1: Makefile target discovery + execution (host API + browser UI).
+    # Feature #1: Makefile target discovery (display-only; host API + browser UI).
     # The row name must be the package name: the client module system discovers
     # the browser half (lib/client.js) through this package's dsh.client manifest.
     - id: dsh-unknownue-plugins
       name: 'dsh-unknownue-plugins'
       config:
-        # Command (or command prefix) that runs make. Set to "wsl make" (or a
-        # full path) when the Makefile lives inside a WSL distro.
-        makeBinary: make
         # Default Makefile name/path, resolved against the session's workdir.
         makefile: Makefile

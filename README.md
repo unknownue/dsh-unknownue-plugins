@@ -5,19 +5,19 @@ aggregates my personal DSH plugins, so a single install mounts them all.
 
 ## Features
 
-### 1. Makefile target discovery + execution (UI + execution, no agent)
+### 1. Makefile target discovery (display-only)
 
 A session-header button opens a Makefile panel that, for the current session's
 workspace directory:
 
 - **刷新** — re-read the Makefile on demand (no polling / no watcher) and list
-  its targets with `##` help comments and `.PHONY` entries.
-- **运行** — run one target through the platform shell and show stdout / stderr
-  / exit code.
+  its targets with `##` help comments and `.PHONY` entries, highlighting the
+  default target.
+- **复制** — copy the `make <target>` command for any target to the clipboard.
 
 The browser half (`lib/client.js`) calls the host half's JSON-RPC route
 (`POST /dsh-unknownue-plugins/makefile/api`) directly — there is no agent
-interaction, and no model-facing tools are registered.
+interaction, no model-facing tools, and no target execution.
 
 ### 2. Content width control (merged from dsh-ui-width)
 
@@ -30,7 +30,14 @@ chat/content column width (`--dsh-chat-content-width`), persisted in
 A button right of the Makefile button opens the current session's working
 directory in the OS file manager (Explorer / Finder / xdg-open). It calls a
 host loopback route (`POST /dsh-unknownue-plugins/open/api`) that validates the
-path is an existing directory, then spawns the platform file manager detached.
+path is an existing directory, then spawns the platform file manager.
+
+### 4. Open terminal at workspace
+
+A button opens a terminal window whose working directory is the current
+session's workspace (Windows: `cmd`; macOS: Terminal.app; Linux:
+`x-terminal-emulator`). It calls a host loopback route
+(`POST /dsh-unknownue-plugins/terminal/api`).
 
 ## Install
 
@@ -38,8 +45,9 @@ path is an existing directory, then spawns the platform file manager detached.
 dsh plugin --profile web add github:unknownue/dsh-unknownue-plugins
 ```
 
-Restart `dsh web`, refresh the page. The Makefile button, the open-workspace
-button, and the width control appear in the session header / sidebar footer.
+Restart `dsh web`, refresh the page. The Makefile, open-workspace, and
+open-terminal buttons appear in the session header; the width control appears in
+the sidebar footer.
 
 ## Configuration
 
@@ -48,7 +56,6 @@ profile's `cordis.patch.yml` (row id `dsh-unknownue-plugins/makefile`):
 
 | key | default | meaning |
 |-----|---------|---------|
-| `makeBinary` | `make` | Command (or prefix) that runs make. Use `wsl make` for a Makefile inside WSL. |
 | `makefile` | `Makefile` | Default Makefile name/path, resolved against the session's workdir. |
 
 ## Adding a feature
