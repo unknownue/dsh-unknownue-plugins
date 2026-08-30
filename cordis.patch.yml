@@ -16,3 +16,16 @@
         makefile: Makefile
         # Remote hosts are managed via the UI and stored in ~/.dsh/remote-hosts.json
         # No configuration needed here — click the → button in session header to add hosts.
+
+    # Feature #5: Authenticated gateway for remote DSH access.
+    # Bundled from dsh-gateway — provides password-protected reverse proxy
+    # with WebSocket tunneling, so remote sessions work exactly like local.
+    - id: gateway
+      name: 'dsh-gateway'
+      inject: ['webServer']
+      config:
+        enabled: true
+        listenHost: '0.0.0.0'
+        port: 8642
+        # Password: set here, or via $DSH_GATEWAY_PASSWORD, or ~/.dsh-gateway/secret
+        # password: 'your-password-here'

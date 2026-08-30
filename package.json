@@ -1,7 +1,7 @@
 {
   "name": "dsh-unknownue-plugins",
-  "version": "0.1.0",
-  "description": "Personal DSH plugin bundle (unknownue): aggregates my personal DSH plugins into one install. Features: Makefile target panel (display-only), content-width control (merged from dsh-ui-width), open-workspace button.",
+  "version": "0.2.0",
+  "description": "Personal DSH plugin bundle (unknownue): aggregates my personal DSH plugins into one install. Features: Makefile target panel, content-width control, open-workspace button, remote control via SSH, authenticated gateway for remote DSH access.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -23,10 +23,15 @@
     "dsh-bundle",
     "make",
     "makefile",
-    "build"
+    "build",
+    "remote",
+    "gateway"
   ],
   "engines": {
     "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "dsh-gateway": "^1.7.0"
   },
   "dsh": {
     "bundle": {

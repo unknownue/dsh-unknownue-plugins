@@ -59,6 +59,19 @@ configured machines through `~/.ssh/config` aliases:
 All connection details (host, port, user, key) are stored locally — no
 credentials are stored in this plugin or sent anywhere.
 
+### 6. Remote DSH gateway (via dsh-gateway)
+
+An authenticated reverse proxy that lets you access this DSH instance from
+another machine (phone, laptop, another continent) — remote sessions behave
+exactly like sitting at the machine itself.
+
+- **Password-protected** — login page + HMAC-signed session cookie
+- **WebSocket tunneling** — live UI works exactly as locally
+- **Zero runtime deps** — plain Node core, nothing to audit
+
+Access at `http://<your-ip>:8642` after setting a password. See
+[Configuration](#configuration) below.
+
 ## Install
 
 ```sh
@@ -85,6 +98,25 @@ profile's `cordis.patch.yml` (row id `dsh-unknownue-plugins`):
 Remote hosts are managed via the UI (click the `→` button in session header).
 Host configurations are stored in `~/.dsh/remote-hosts.json` — no manual
 configuration needed.
+
+### Gateway
+
+The bundled [dsh-gateway](https://github.com/thinkmoon/dsh-gateway) provides
+remote access to this DSH instance. Override in your profile's
+`cordis.patch.yml` (row id `gateway`):
+
+```yaml
+- id: gateway
+  name: 'dsh-gateway'
+  config:
+    enabled: true
+    listenHost: '0.0.0.0'    # listen on all interfaces
+    port: 8642                # gateway port
+    password: 'your-password' # or set $DSH_GATEWAY_PASSWORD
+```
+
+Password resolution order: config `password` → `$DSH_GATEWAY_PASSWORD` →
+`~/.dsh-gateway/secret` (auto-generated on first run).
 
 ## Adding a feature
 
