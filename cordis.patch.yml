@@ -14,26 +14,32 @@
       config:
         makefile: Makefile
 
-    # ──────────────────────────────────────────────────────────────────────
-    # Feature #2: SSH remote workspaces (via dsh-workspace-enhancement).
-    # Provides: ctx.ssh / ctx.subprocess / ctx.fs transparent remote providers,
-    # multi-workspace sessions, cross-server execution, machine management.
-    # ──────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# Feature #2: SSH remote workspaces (via dsh-workspace-enhancement).
+# Provides: ctx.ssh / ctx.subprocess / ctx.fs transparent remote providers,
+# multi-workspace sessions, cross-server execution, machine management.
+#
+# 注意：disable 行必须是顶层行（按 id 覆盖 base bundle 的同名行），
+# 不能放进 - insert: 块 —— insert 是"新增"语义，与 base bundle 已有的
+# directory-picker / subprocess / fs-sandbox 行重复 id，导致 loader 崩溃
+# (duplicate loader entry id)。见 dsh-workspace-enhancement 的官方写法。
+# ──────────────────────────────────────────────────────────────────────────
 
-    # Disable default directory picker (SSH client UI takes over)
-    - id: directory-picker
-      name: '@deepseek-ai/dsh-host-directory-picker-auto'
-      disabled: true
+# Disable default directory picker (SSH client UI takes over)
+- id: directory-picker
+  name: '@deepseek-ai/dsh-host-directory-picker-auto'
+  disabled: true
 
-    # Disable local providers (mixed provider handles both local + remote)
-    - id: subprocess
-      name: '@deepseek-ai/dsh-subprocess-local'
-      disabled: true
+# Disable local providers (mixed provider handles both local + remote)
+- id: subprocess
+  name: '@deepseek-ai/dsh-subprocess-local'
+  disabled: true
 
-    - id: fs-sandbox
-      name: '@deepseek-ai/dsh-fs-sandbox'
-      disabled: true
+- id: fs-sandbox
+  name: '@deepseek-ai/dsh-fs-sandbox'
+  disabled: true
 
+- insert:
     # SSH remote provider (placeholder connection, lazy establishment)
     - id: ssh-remote
       name: dsh-workspace-enhancement
