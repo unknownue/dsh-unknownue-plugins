@@ -52,10 +52,12 @@ configured machines through `~/.ssh/config` aliases:
   systemd service), restart / stop / start from the UI.
 - **Multi-host** — configure multiple remote machines, switch between them
   with a button bar; each host's reachability is checked live.
+- **Host management** — add, edit, remove hosts directly from the UI; test
+  connections before saving. Host configs are stored in
+  `~/.dsh/remote-hosts.json`.
 
-All hosts are referenced by their `~/.ssh/config` Host alias — no
-credentials are stored in this plugin. See [Configuration](#configuration)
-below for the `remote` config block.
+All connection details (host, port, user, key) are stored locally — no
+credentials are stored in this plugin or sent anywhere.
 
 ## Install
 
@@ -80,33 +82,9 @@ profile's `cordis.patch.yml` (row id `dsh-unknownue-plugins`):
 
 ### Remote control
 
-```yaml
-remote:
-  hosts:
-    - id: home
-      sshHost: home            # ~/.ssh/config Host alias (required)
-      label: "家里机器"         # UI display name
-      description: "..."       # optional description
-    - id: ecs
-      sshHost: ecs
-      label: "阿里云 ECS"
-  tunnel:
-    monitorHost: ecs           # host id to check tunnel port on
-    tunnelPort: 2222           # port number
-    serviceHost: home          # host id where systemd service runs
-    serviceName: reverse-ssh-tunnel.service
-```
-
-| field | required | meaning |
-|-------|----------|---------|
-| `remote.hosts[].id` | yes | Unique identifier for the host |
-| `remote.hosts[].sshHost` | yes | `~/.ssh/config` Host alias |
-| `remote.hosts[].label` | no | Display name in the UI (defaults to `id`) |
-| `remote.hosts[].description` | no | Description shown in the UI |
-| `remote.tunnel.monitorHost` | no | Host id to check tunnel port on |
-| `remote.tunnel.tunnelPort` | no | Tunnel port number (default 2222) |
-| `remote.tunnel.serviceHost` | no | Host id where the systemd service runs |
-| `remote.tunnel.serviceName` | no | Systemd unit name |
+Remote hosts are managed via the UI (click the `→` button in session header).
+Host configurations are stored in `~/.dsh/remote-hosts.json` — no manual
+configuration needed.
 
 ## Adding a feature
 
