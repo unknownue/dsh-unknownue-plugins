@@ -14,3 +14,20 @@
       config:
         # Default Makefile name/path, resolved against the session's workdir.
         makefile: Makefile
+        # Remote control: SSH hosts and tunnel configuration.
+        # Hosts reference ~/.ssh/config aliases — no credentials stored here.
+        remote:
+          hosts:
+            - id: home
+              sshHost: home                              # ~/.ssh/config Host alias
+              label: "家里机器"
+              description: "Ubuntu server"
+            - id: ecs
+              sshHost: ecs                               # ~/.ssh/config Host alias
+              label: "阿里云 ECS"
+              description: "cn-shanghai"
+          tunnel:
+            monitorHost: ecs                             # check tunnel port on this host
+            tunnelPort: 2222                             # reverse tunnel port
+            serviceHost: home                            # systemd service runs here
+            serviceName: reverse-ssh-tunnel.service      # systemd unit name
