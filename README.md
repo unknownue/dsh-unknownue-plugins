@@ -211,12 +211,12 @@ Password resolution order: config `password` → `$DSH_GATEWAY_PASSWORD` →
 
 ## Adding a feature
 
-1. Host logic: add `lib/<feature>.js` exporting pure helpers plus a
+1. Host logic: add `src/host/<feature>.ts` exporting pure helpers plus a
    `<feature>Dispatch` function (like `makefileDispatch`); register its HTTP
-   route in `lib/index.js`.
+   route in `src/host/index.ts`. The build emits `lib/<feature>.js`.
 2. Browser UI (optional): add your components under `src/client/` and wire
-   them into `src/client/index.tsx`. `lib/client.js` is a BUILD ARTIFACT —
-   do not edit it by hand.
+   them into `src/client/index.tsx`. Every `lib/*.js` is a BUILD ARTIFACT —
+   do not edit those by hand.
 3. Keep `cordis.patch.yml`'s single row (`name: 'dsh-unknownue-plugins'`); the
    package's `dsh.client` manifest already serves `lib/client.js`.
 
@@ -227,17 +227,23 @@ Password resolution order: config `password` → `$DSH_GATEWAY_PASSWORD` →
 ## Development
 
 ```sh
-npm install          # devDependencies only: esbuild, typescript, @types/react
-npm run typecheck    # tsc --noEmit over src/client
-npm run build        # esbuild bundles src/client/index.tsx → lib/client.js
-node lib/explorer.test.js   # host-half mock-seam test suite
+npm install          # devDependencies only: esbuild, typescript, @types/{node,react}
+npm run typecheck    # tsc --noEmit over src/client AND src/host
+npm run build        # esbuild: src/client → lib/client.js; src/host/* → lib/*.js
+npm test             # node lib/explorer.test.js (built from src/host/explorer.test.ts)
 ```
 
-- **Host half** (`lib/index.js`, `lib/makefile.js`, `lib/platform.js`,
-  `lib/explorer.js`) is hand-written ESM JavaScript — no build step, edits
-  take effect after a `dsh plugin --profile web install` + restart.
-- **Browser half** is TypeScript under `src/client/`; it is bundled with
-  esbuild into the single `lib/client.js` client module (React and
+- **Host half** — TypeScript under `src/host/`
+  (`index.ts`, `makefile.ts`, `platform.ts`, `explorer.ts`,
+  `explorer.test.ts`), built by esbuild into plain ESM `lib/*.js`. Node
+  builtins and imports between feature modules are external, so the emitted
+  module graph matches the original hand-written files (`index.js` imports
+  `./makefile.js` / `./explorer.js` / `./platform.js` at runtime). The seam
+  types (`ctx.fs` / `ctx.subprocess` / `ctx.webServer` / `ctx.effect`) are
+  declared locally in `src/host/types.ts` — minimal honest contracts, no
+  hard @deepseek-ai/cordis devDependency.
+- **Browser half** — TypeScript under `src/client/`; bundled with esbuild
+  into the single `lib/client.js` client module (React and
   `react/jsx-runtime` are externals — the DSH host module loader provides
   them). `.gitattributes` pins `src/client/*.css` to LF so the CSS text
   embedded in the bundle is byte-identical on every platform.
@@ -245,10 +251,12 @@ node lib/explorer.test.js   # host-half mock-seam test suite
 
 ## Tests
 
-The explorer host half ships an ad-hoc mock-seam test suite (no test framework):
+The explorer host half ships an ad-hoc mock-seam test suite (no test framework;
+TypeScript source at `src/host/explorer.test.ts`, built to
+`lib/explorer.test.js`):
 
 ```sh
-node lib/explorer.test.js
+npm test
 ```
 
 It exercises the remote-aware routing (`ssh://` / `dsw-routes` normalization,
