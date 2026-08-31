@@ -1,0 +1,7 @@
+# Reproducible client bundles: styles.css text is embedded verbatim by the
+# esbuild text loader, so the checkout MUST always carry LF endings —
+# regardless of the developer's core.autocrlf setting.
+src/client/*.css text eol=lf
+
+# Built artifacts: keep checkout/commit diffs byte-stable on Windows.
+lib/client.js text eol=lf

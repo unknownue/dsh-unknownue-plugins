@@ -214,8 +214,9 @@ Password resolution order: config `password` → `$DSH_GATEWAY_PASSWORD` →
 1. Host logic: add `lib/<feature>.js` exporting pure helpers plus a
    `<feature>Dispatch` function (like `makefileDispatch`); register its HTTP
    route in `lib/index.js`.
-2. Browser UI (optional): add the control to `lib/client.js` — the single
-   client module whose `__ModuleLoader__` id equals the package name.
+2. Browser UI (optional): add your components under `src/client/` and wire
+   them into `src/client/index.tsx`. `lib/client.js` is a BUILD ARTIFACT —
+   do not edit it by hand.
 3. Keep `cordis.patch.yml`'s single row (`name: 'dsh-unknownue-plugins'`); the
    package's `dsh.client` manifest already serves `lib/client.js`.
 
@@ -223,8 +224,24 @@ Password resolution order: config `password` → `$DSH_GATEWAY_PASSWORD` →
 > (`require.resolve(name + "/package.json")`), so the plugin row `name` must
 > stay the package name — not a subpath.
 
-The bundle is self-contained (no build step, no npm publishing); re-run
-`dsh plugin --profile web install` and restart to pick up changes.
+## Development
+
+```sh
+npm install          # devDependencies only: esbuild, typescript, @types/react
+npm run typecheck    # tsc --noEmit over src/client
+npm run build        # esbuild bundles src/client/index.tsx → lib/client.js
+node lib/explorer.test.js   # host-half mock-seam test suite
+```
+
+- **Host half** (`lib/index.js`, `lib/makefile.js`, `lib/platform.js`,
+  `lib/explorer.js`) is hand-written ESM JavaScript — no build step, edits
+  take effect after a `dsh plugin --profile web install` + restart.
+- **Browser half** is TypeScript under `src/client/`; it is bundled with
+  esbuild into the single `lib/client.js` client module (React and
+  `react/jsx-runtime` are externals — the DSH host module loader provides
+  them). `.gitattributes` pins `src/client/*.css` to LF so the CSS text
+  embedded in the bundle is byte-identical on every platform.
+- Re-run `dsh plugin --profile web install` and restart to pick up changes.
 
 ## Tests
 
