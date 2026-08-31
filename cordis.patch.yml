@@ -66,18 +66,3 @@
       name: dsh-workspace-enhancement/web
       config:
         maxEntries: 1000
-
-    # ──────────────────────────────────────────────────────────────────────
-    # Feature #3: Authenticated gateway for remote DSH access (via dsh-gateway).
-    # Password-protected reverse proxy with WebSocket tunneling.
-    # Remote sessions work exactly like sitting at the machine.
-    # ──────────────────────────────────────────────────────────────────────
-    - id: gateway
-      name: 'dsh-gateway'
-      inject: ['webServer']
-      config:
-        enabled: true
-        listenHost: '0.0.0.0'
-        port: 8642
-        # Password: set here, or via $DSH_GATEWAY_PASSWORD, or ~/.dsh-gateway/secret
-        # password: 'your-password-here'
