@@ -73,6 +73,37 @@ exactly like sitting at the machine itself.
 Access at `http://<your-ip>:8642` after setting a password. See
 [Configuration](#configuration) below.
 
+### 7. File explorer tab (remote-aware; editor ported from dsh-explorer-editor)
+
+A **"文件" tab** beside 对话 / 轨迹 hosts the whole file browser for the
+current session's workspace. The VS Code-style UI is ported from
+[dsh-explorer-editor](https://github.com/oneirictouch/dsh-explorer-editor)
+(MIT) and re-wired onto this bundle's remote-aware host routes:
+
+- **File tree** — left pane: lazy directory tree, dirs first, sizes, expand/collapse;
+- **Resizable splitter** — drag the divider between the tree and the editor to
+  adjust the tree width (the editor takes the remainder; persisted per browser);
+- **Editor tabs** — open several files as tabs; Ctrl/Cmd+S saves (dirty marker);
+- **Markdown preview** — rendered markdown with workspace images inlined via `readDataUrl`;
+- **Context menu** — new file / new directory / rename / copy / delete
+  (non-empty directories rejected; the tree walks children first);
+- **Live refresh** — a host fs.watch → SSE channel refreshes changed
+  directories automatically for LOCAL roots (remote roots use the refresh button);
+- **Remote workspaces** — every operation routes through the `ctx.fs` /
+  `ctx.subprocess` seams with the session cwd passed verbatim (`ssh://<id>/<path>`
+  or the `dsw-routes` placeholder), so a remote session operates on the server
+  over SFTP with structural ops on the remote shell. The side-workspace
+  permission gates apply unchanged (`fs: r` rejects writes, `exec: off`
+  rejects structural ops).
+
+The browser half calls the host loopback routes
+(`POST /dsh-unknownue-plugins/explorer/api`,
+`GET /dsh-unknownue-plugins/explorer/watch`) directly — same fence as every
+other route in this bundle.
+
+> **Remote Windows hosts**: tree/read/write work (SFTP); mkdir/rename/delete
+> need a POSIX shell and are reported as unsupported until a pwsh branch lands.
+
 ## Install
 
 ```sh
@@ -81,8 +112,9 @@ dsh plugin --profile web add github:unknownue/dsh-unknownue-plugins
 
 Restart `dsh web`, refresh the page. The Makefile, open-workspace, and
 open-terminal buttons appear in the session header; the width control appears
-in the sidebar footer; the workspace enhancement adds remote workspace
-capabilities to the native workspace picker.
+in the sidebar footer; the **文件** tab (file explorer) joins 对话 / 轨迹 in
+the session body; the workspace enhancement adds remote workspace capabilities
+to the native workspace picker.
 
 > **First install with DSH's supply-chain pnpm**: native build scripts are
 > blocked by default — allow them once per profile in `pnpm-workspace.yaml`
@@ -95,10 +127,14 @@ capabilities to the native workspace picker.
 ┌─────────────────────────────────────────────────────────────┐
 │  dsh-unknownue-plugins (bundle)                             │
 │                                                             │
-│  ┌──────────────┐  ┌──────────────────┐  ┌──────────────┐  │
-│  │ Makefile     │  │ Content Width    │  │ Open Dir/    │  │
-│  │ Panel        │  │ Control          │  │ Terminal     │  │
-│  └──────────────┘  └──────────────────┘  └──────────────┘  │
+│  ┌──────────────┐  ┌──────────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │ Makefile     │  │ Content Width    │  │ Open Dir/    │  │ File         │  │
+│  │ Panel        │  │ Control          │  │ Terminal     │  │ Explorer     │  │
+│  └──────────────┘  └──────────────────┘  └──────────────┘  └──────┬───────┘  │
+│                                                                    │          │
+│  ┌─────────────────────────────────────────────────────────────────▼────────┐  │
+│  │  ctx.fs / ctx.subprocess seams (mixed provider: local ←→ remote)         │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │  dsh-workspace-enhancement (dependency)               │  │
@@ -136,6 +172,16 @@ profile's `cordis.patch.yml`.
 | key | default | meaning |
 |-----|---------|---------|
 | `makefile` | `Makefile` | Default Makefile name/path, resolved against the session's workdir. |
+
+### File explorer
+
+| key | default | meaning |
+|-----|---------|---------|
+| `explorer.maxListEntries` | `1000` | Entries per directory level (excess reported as `truncated`). |
+| `explorer.maxReadBytes` | `1048576` | Text preview cap; larger files offer download only. |
+| `explorer.maxRawBytes` | `8388608` | Binary preview / download cap. |
+| `explorer.structuralGraceMs` | `8000` | Remote structural command grace period. |
+| `explorer.stderrTailBytes` | `8192` | Remote structural stderr tail kept for error messages. |
 
 ### SSH Remote Workspaces
 
@@ -180,6 +226,23 @@ Password resolution order: config `password` → `$DSH_GATEWAY_PASSWORD` →
 The bundle is self-contained (no build step, no npm publishing); re-run
 `dsh plugin --profile web install` and restart to pick up changes.
 
+## Tests
+
+The explorer host half ships an ad-hoc mock-seam test suite (no test framework):
+
+```sh
+node lib/explorer.test.js
+```
+
+It exercises the remote-aware routing (`ssh://` / `dsw-routes` normalization,
+spawn cwd pinning) and the full-path structural operations against a fake
+`ctx.fs` / `ctx.subprocess` pair for both the local and remote worlds.
+
 ## License
 
 MIT
+
+The file-explorer tab's client UI is ported from
+[oneirictouch/dsh-explorer-editor](https://github.com/oneirictouch/dsh-explorer-editor)
+(MIT), © its contributors, and re-wired onto this bundle's remote-aware host
+routes; the host half and the HTTP adapter are original to this bundle.

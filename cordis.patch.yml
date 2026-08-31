@@ -13,6 +13,12 @@
       name: 'dsh-unknownue-plugins'
       config:
         makefile: Makefile
+        explorer:
+          maxListEntries: 1000
+          maxReadBytes: 1048576
+          maxRawBytes: 8388608
+          structuralGraceMs: 8000
+          stderrTailBytes: 8192
 
 # ──────────────────────────────────────────────────────────────────────────
 # Feature #2: SSH remote workspaces (via dsh-workspace-enhancement).
