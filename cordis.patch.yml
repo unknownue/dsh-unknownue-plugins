@@ -20,6 +20,32 @@
           structuralGraceMs: 8000
           stderrTailBytes: 8192
 
+- insert:
+    # ──────────────────────────────────────────────────────────────────────
+    # Feature #7: paperspace — in-process academic paper reader.
+    # PGlite (WASM PostgreSQL) + local filesystem object store; no Docker,
+    # no MinIO. MUST be configured before use: the user saves storage
+    # locations via DSH Settings → 论文阅读 or the tab's setup screen,
+    # persisted to <dsh home>/paperspace/settings.json. The row config below
+    # only seeds the settings form's initial values.
+    # ──────────────────────────────────────────────────────────────────────
+    - id: paperspace
+      name: 'dsh-unknownue-plugins/paperspace'
+      config:
+        dataDir: ''            # empty → ~/.dsh/paperspace/db
+        assetsDir: ''          # empty → ~/.dsh/paperspace/assets
+        workspaceDir: ''       # empty → sibling of dataDir; holds papers/*.md
+        port: 0                # 0 → OS-assigned loopback pgwire port
+        initialMemoryBytes: 536870912
+        pollMs: 5000
+        ingestTimeoutMs: 30000
+        maxAssetBytes: 10485760
+        ingestConcurrency: 2
+        translateMaxAttempts: 3
+        translateStuckAfterMinutes: 30
+        translateTimeoutMs: 120000
+        rescanIntervalMs: 60000
+
 # ──────────────────────────────────────────────────────────────────────────
 # Feature #2: SSH remote workspaces (via dsh-workspace-enhancement).
 # Provides: ctx.ssh / ctx.subprocess / ctx.fs transparent remote providers,

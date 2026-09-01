@@ -11,6 +11,7 @@ import { OpenDirButton } from "./toolbar/OpenDirButton";
 import { OpenTerminalButton } from "./toolbar/OpenTerminalButton";
 import { WidthControl, readWidthPct, applyWidth, setWidthPct } from "./toolbar/WidthControl";
 import { applyExplorerEditor } from "./explorer-editor";
+import { applyPaperspaceTab } from "./paperspace/index";
 
 // Inject explorer editor CSS
 import stylesCss from "./styles.css";
@@ -82,7 +83,7 @@ function ensureStyles(): void {
 
 // ── plugin contract ───────────────────────────────────────────────────
 
-const inject = ["slots", "sessions", "locale"];
+const inject = ["slots", "sessions", "workspaces", "locale"];
 
 function apply(ctx: any): void {
   ensureStyles();
@@ -137,6 +138,7 @@ function apply(ctx: any): void {
   );
 
   applyExplorerEditor(ctx);
+  applyPaperspaceTab(ctx);
 }
 
 export { apply, inject };

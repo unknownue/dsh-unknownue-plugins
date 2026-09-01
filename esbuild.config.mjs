@@ -28,6 +28,108 @@ if (want("client")) {
 });
 `;
 
+  /**
+   * Scope a flat CSS file under one container class so paperspace's generic
+   * selectors (.button, .dialog, …) never collide with DSH's global styles.
+   * Whitespace and comments are preserved verbatim; @keyframes passes
+   * through untouched; @media blocks are recursed.
+   */
+  function scopeCss(css, scope) {
+    let out = '';
+    let i = 0;
+    const n = css.length;
+    // Skip whitespace/comments, copying them to the output as-is.
+    const skipTrivia = from => {
+      let k = from;
+      while (k < n) {
+        if (css[k] === '/' && css[k + 1] === '*') {
+          const endComment = css.indexOf('*/', k + 2);
+          out += css.slice(k, endComment < 0 ? n : endComment + 2);
+          k = endComment < 0 ? n : endComment + 2;
+          continue;
+        }
+        if (/\s/.test(css[k])) {
+          out += css[k];
+          k++;
+          continue;
+        }
+        break;
+      }
+      return k;
+    };
+    while (i < n) {
+      i = skipTrivia(i);
+      if (i >= n) break;
+      if (css[i] === '@') {
+        const open = css.indexOf('{', i);
+        if (open < 0) {
+          out += css.slice(i);
+          break;
+        }
+        let depth = 0;
+        let j = open;
+        for (; j < n; j++) {
+          if (css[j] === '{') depth++;
+          else if (css[j] === '}') {
+            depth--;
+            if (depth === 0) break;
+          }
+        }
+        const end = j + 1;
+        const head = css.slice(i, open).trim();
+        if (head.startsWith('@media')) {
+          out += head + ' {' + scopeCss(css.slice(open + 1, end - 1), scope) + '}';
+        } else {
+          out += css.slice(i, end); // @keyframes and friends verbatim
+        }
+        i = end;
+        continue;
+      }
+      const open = css.indexOf('{', i);
+      if (open < 0) {
+        out += css.slice(i);
+        break;
+      }
+      const sel = css.slice(i, open).trim();
+      let depth = 0;
+      let j = open;
+      for (; j < n; j++) {
+        if (css[j] === '{') depth++;
+        else if (css[j] === '}') {
+          depth--;
+          if (depth === 0) break;
+        }
+      }
+      const end = j + 1;
+      const body = css.slice(open + 1, end - 1);
+      const scoped = sel
+        .split(',')
+        .map(part => `${scope} ${part.trim()}`)
+        .join(',\n');
+      out += scoped + ' {' + body + '}';
+      i = end;
+    }
+    return out;
+  }
+
+  // CSS-as-text plugin: paperspace styles are scoped under `.dsh-paperspace`;
+  // KaTeX CSS has its font URLs rewritten to the host's static fonts route.
+  const cssTextPlugin = {
+    name: 'dsh-unknownue-plugins-css-text',
+    setup(build) {
+      build.onLoad({ filter: /paperspace[\\/]styles\.css$/, namespace: 'file' }, async args => {
+        const { readFile } = await import('node:fs/promises');
+        const css = await readFile(args.path, 'utf8');
+        return { contents: 'export default ' + JSON.stringify(scopeCss(css, '.dsh-paperspace')) + ';', loader: 'js' };
+      });
+      build.onLoad({ filter: /katex\.min\.css$/, namespace: 'file' }, async args => {
+        const { readFile } = await import('node:fs/promises');
+        const css = (await readFile(args.path, 'utf8')).replace(/url\(fonts\//g, 'url(/dsh-unknownue-plugins/paperspace/static/fonts/');
+        return { contents: 'export default ' + JSON.stringify(css) + ';', loader: 'js' };
+      });
+    },
+  };
+
   await build({
     entryPoints: ["src/client/index.tsx"],
     bundle: true,
@@ -36,6 +138,7 @@ if (want("client")) {
     target: "es2022",
     jsx: "automatic",
     jsxImportSource: "react",
+    plugins: [cssTextPlugin],
     loader: {
       ".css": "text",
     },
@@ -71,12 +174,17 @@ if (want("host")) {
       "src/host/platform.ts",
       "src/host/explorer.ts",
       "src/host/explorer.test.ts",
+      "src/host/paperspace/index.ts",
+      "src/host/paperspace/paperspace.test.ts",
     ],
     outdir: "lib",
     bundle: true,
     format: "esm",
     platform: "node",
     target: "node22",
+    // npm packages stay external so their own runtime asset resolution
+    // (PGlite WASM/data files, postgres.js) keeps working at runtime.
+    packages: "external",
     // Keep imports between feature modules as-is (index.js imports
     // ./makefile.js / ./explorer.js / ./platform.js at runtime, exactly like
     // the hand-written files did), instead of inlining everything into the
@@ -86,5 +194,5 @@ if (want("host")) {
     sourcemap: false,
   });
 
-  console.log("✓ Built host modules (lib/index.js, makefile.js, platform.js, explorer.js, explorer.test.js)");
+  console.log("✓ Built host modules (index, makefile, platform, explorer, explorer.test, paperspace, paperspace.test)");
 }

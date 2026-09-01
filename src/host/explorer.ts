@@ -69,13 +69,39 @@ export function worldOf(target: FsTarget | undefined): ExecutionWorld {
   return String(target?.targetKey ?? "").startsWith("ssh://") ? "remote" : "local";
 }
 
-/** Resolve the two seams lazily; honest errors when they are not mounted. */
-function servicesOf(ctx: ServiceBag): { fs: FileSystemFace; subprocess: SubprocessFace | undefined } {
-  const fs = ctx.get("fs");
+/**
+ * Resolve the two seams lazily; honest errors when they are not mounted.
+ *
+ * The fs comes from the LIVE SESSION whose header cwd equals the request's
+ * `cwd` when one exists: a session-scoped fs (e.g. a Docker world's
+ * `ctx.fs`) serves the session's real paths, whereas the host fs only sees
+ * the workspace anchor — an empty directory for container workspaces, which
+ * is why the file tab showed nothing. Non-session (host-level) calls fall
+ * back to the host fs.
+ */
+function servicesOf(ctx: ServiceBag, cwd: string | undefined): { fs: FileSystemFace; subprocess: SubprocessFace | undefined } {
+  let fs = ctx.get("fs") as FileSystemFace | undefined;
+  if (cwd !== undefined) {
+    const agents = ctx.get("agents") as unknown as
+      | { list(): ReadonlyArray<{ session?: { header?: { cwd?: string } }; ctx?: ServiceBag }> }
+      | undefined;
+    // Windows paths are case-insensitive and separator-tolerant; match the
+    // live agent by its normalized header cwd so Docker workspaces (whose
+    // session cwd is the host anchor) resolve their session-scoped fs.
+    const normCwd = cwd.replace(/\\/g, "/").toLowerCase();
+    const agent = agents?.list().find((a) => {
+      const candidate = a.session?.header?.cwd;
+      return typeof candidate === "string" && candidate.replace(/\\/g, "/").toLowerCase() === normCwd;
+    });
+    if (agent?.ctx !== undefined) {
+      const scoped = agent.ctx.get("fs") as FileSystemFace | undefined;
+      if (scoped !== undefined) fs = scoped;
+    }
+  }
   if (fs === undefined) {
     throw new Error("explorer: fs service is not mounted (expected the dsh base fs provider or dsh-workspace-enhancement)");
   }
-  return { fs: fs as FileSystemFace, subprocess: ctx.get("subprocess") as SubprocessFace | undefined };
+  return { fs, subprocess: ctx.get("subprocess") as SubprocessFace | undefined };
 }
 
 function limitsOf(config: BundleConfig): ExplorerLimits {
@@ -177,6 +203,17 @@ function joinChild(world: ExecutionWorld, parentPath: string, name: string): str
   return world === "remote" ? posixJoin(parentPath, safe) : join(parentPath, safe);
 }
 
+/**
+ * The world-appropriate absolute path for node:fs / shell operations (NOT for
+ * display). In the LOCAL world that is the underlying HOST target key: a
+ * Docker-backed fs exposes bind-mount host paths there, and node:fs cannot
+ * open container spellings (`C:\workspace\…`). In the REMOTE world it is the
+ * plain remote posix path the shell runs against.
+ */
+function opPath(target: FsTarget, world: ExecutionWorld, fs: FileSystemFace): string {
+  return world === "remote" ? fs.processPath(target) : String(target.targetKey);
+}
+
 // ── structural operations ───────────────────────────────────────────────────
 
 interface RemoteResult {
@@ -215,7 +252,7 @@ function assertRemoteSucceeded(result: RemoteResult, operation: string): void {
 }
 
 async function makeEntry(ctx: ServiceBag, config: BundleConfig, params: ExplorerParams, kind: "dir" | "file"): Promise<{ ok: true; world: ExecutionWorld; path: string }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const limits = limitsOf(config);
   const parent = await resolveTarget(fs, params);
   const parentInfo = await fs.stat(parent);
@@ -224,7 +261,8 @@ async function makeEntry(ctx: ServiceBag, config: BundleConfig, params: Explorer
   }
   const world = worldOf(parent);
   const name = requireString(params.name, "name");
-  const full = joinChild(world, fs.processPath(parent), name);
+  const display = joinChild(world, fs.processPath(parent), name);
+  const full = joinChild(world, opPath(parent, world, fs), name);
 
   if (world === "local") {
     if (kind === "dir") await nodeFs.mkdir(full, { recursive: true });
@@ -233,17 +271,17 @@ async function makeEntry(ctx: ServiceBag, config: BundleConfig, params: Explorer
       await handle.close();
     }
   } else {
-    const { subprocess } = servicesOf(ctx);
+    const { subprocess } = servicesOf(ctx, cwdOf(params));
     const cwd = remoteSpawnCwd(params, parent);
     const argv = kind === "dir" ? ["mkdir", "-p", "--", full] : ["touch", "--", full];
     const result = await runRemote(subprocess, cwd, argv, limits);
     assertRemoteSucceeded(result, kind === "dir" ? "mkdir" : "touch");
   }
-  return { ok: true, world, path: full };
+  return { ok: true, world, path: display };
 }
 
 async function renameEntry(ctx: ServiceBag, config: BundleConfig, params: ExplorerParams): Promise<{ ok: true; world: ExecutionWorld; path: string }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const limits = limitsOf(config);
   // Source must exist: resolving it also fixes the world and the separator rules.
   const source = await resolveTarget(fs, params);
@@ -251,14 +289,14 @@ async function renameEntry(ctx: ServiceBag, config: BundleConfig, params: Explor
   if (info === undefined) throw new Error("source not found");
   const world = worldOf(source);
   const name = requireString(params.name, "name");
-  const sourcePath = fs.processPath(source);
+  const sourcePath = opPath(source, world, fs);
   const parentPath = world === "remote" ? posixJoin(sourcePath, "..") : join(sourcePath, "..");
   const dest = joinChild(world, parentPath, name);
 
   if (world === "local") {
     await nodeFs.rename(sourcePath, dest);
   } else {
-    const { subprocess } = servicesOf(ctx);
+    const { subprocess } = servicesOf(ctx, cwdOf(params));
     const cwd = remoteSpawnCwd(params, source);
     // `mv -T` is GNU-only; BSD/macOS reject the flag — retry without it.
     let result = await runRemote(subprocess, cwd, ["mv", "-T", "--", sourcePath, dest], limits);
@@ -271,18 +309,18 @@ async function renameEntry(ctx: ServiceBag, config: BundleConfig, params: Explor
 }
 
 async function deleteEntry(ctx: ServiceBag, config: BundleConfig, params: ExplorerParams): Promise<{ ok: true; world: ExecutionWorld; path: string }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const limits = limitsOf(config);
   const target = await resolveTarget(fs, params);
   const info = await fs.stat(target);
   if (info === undefined) throw new Error("path not found");
   const world = worldOf(target);
-  const path = fs.processPath(target);
+  const path = opPath(target, world, fs);
 
   if (world === "local") {
     await nodeFs.rm(path, { recursive: true, force: true });
   } else {
-    const { subprocess } = servicesOf(ctx);
+    const { subprocess } = servicesOf(ctx, cwdOf(params));
     const result = await runRemote(subprocess, remoteSpawnCwd(params, target), ["rm", "-rf", "--", path], limits);
     assertRemoteSucceeded(result, "delete");
   }
@@ -299,7 +337,7 @@ interface ListResult {
 }
 
 async function list(ctx: ServiceBag, config: BundleConfig, params: ExplorerParams): Promise<ListResult> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const limits = limitsOf(config);
   const target = await resolveTarget(fs, params);
   const info = await fs.stat(target);
@@ -323,7 +361,7 @@ async function list(ctx: ServiceBag, config: BundleConfig, params: ExplorerParam
 }
 
 async function read(ctx: ServiceBag, config: BundleConfig, params: ExplorerParams): Promise<{ content: string; size: number; world: ExecutionWorld } | { tooLarge: true; size: number; world: ExecutionWorld }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const limits = limitsOf(config);
   const target = await resolveTarget(fs, params);
   const info = await fs.stat(target);
@@ -336,7 +374,7 @@ async function read(ctx: ServiceBag, config: BundleConfig, params: ExplorerParam
 }
 
 async function write(ctx: ServiceBag, _config: BundleConfig, params: ExplorerParams): Promise<{ ok: true; world: ExecutionWorld; path: string }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const target = await resolveTarget(fs, params);
   if (typeof params.content !== "string") throw new Error("content must be a string");
   await fs.writeText(target, params.content);
@@ -344,7 +382,7 @@ async function write(ctx: ServiceBag, _config: BundleConfig, params: ExplorerPar
 }
 
 async function raw(ctx: ServiceBag, config: BundleConfig, params: ExplorerParams): Promise<{ name: string; type: string; size: number; base64: string; world: ExecutionWorld }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const limits = limitsOf(config);
   const target = await resolveTarget(fs, params);
   const info = await fs.stat(target);
@@ -371,11 +409,11 @@ export function parentPathOf(path: unknown, world: ExecutionWorld): string {
 
 /** Open the file's parent directory in the OS file manager (local world only). */
 async function reveal(ctx: ServiceBag, _config: BundleConfig, params: ExplorerParams): Promise<{ ok: true; world: ExecutionWorld; path: string }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const target = await resolveTarget(fs, params);
   const world = worldOf(target);
   if (world !== "local") throw new Error("reveal: remote paths cannot be opened in the local file manager");
-  const parent = parentPathOf(fs.processPath(target), "local");
+  const parent = parentPathOf(opPath(target, "local", fs), "local");
   await openDirectory({ path: parent });
   return { ok: true, world, path: parent };
 }
@@ -480,7 +518,7 @@ export function disposeExplorerWatch(): void {
 // remote-aware seam as `list`/`read`/`write`.
 
 async function statPath(ctx: ServiceBag, _config: BundleConfig, params: ExplorerParams) {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const target = await resolveTarget(fs, params);
   const info = await fs.stat(target);
   if (info === undefined) throw new Error("not-found");
@@ -493,14 +531,14 @@ async function statPath(ctx: ServiceBag, _config: BundleConfig, params: Explorer
 }
 
 async function resolvePath(ctx: ServiceBag, _config: BundleConfig, params: ExplorerParams): Promise<{ path: string; world: ExecutionWorld }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const target = await resolveTarget(fs, params);
   return { path: fs.processPath(target), world: worldOf(target) };
 }
 
 /** Binary-safe inline read as a data URL (markdown image preview). */
 async function readDataUrl(ctx: ServiceBag, config: BundleConfig, params: ExplorerParams): Promise<{ path: string; mime: string; dataUrl: string; world: ExecutionWorld }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const limits = limitsOf(config);
   const target = await resolveTarget(fs, params);
   const info = await fs.stat(target);
@@ -517,23 +555,24 @@ async function readDataUrl(ctx: ServiceBag, config: BundleConfig, params: Explor
 
 /** Create a file (fails when it already exists — editor semantic). */
 async function createFile(ctx: ServiceBag, config: BundleConfig, params: ExplorerParams): Promise<{ path: string; world: ExecutionWorld }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const limits = limitsOf(config);
   const target = await resolveTarget(fs, params);
   const world = worldOf(target);
   const full = fs.processPath(target);
+  const op = opPath(target, world, fs);
   if (world === "local") {
-    const handle = await nodeFs.open(full, "wx").catch((error: NodeJS.ErrnoException) => {
+    const handle = await nodeFs.open(op, "wx").catch((error: NodeJS.ErrnoException) => {
       if (String(error.code) === "EEXIST") throw new Error(`already exists: ${full}`);
       throw error;
     });
     await handle.close();
   } else {
-    const { subprocess } = servicesOf(ctx);
+    const { subprocess } = servicesOf(ctx, cwdOf(params));
     const cwd = remoteSpawnCwd(params, target);
-    const probe = await runRemote(subprocess, cwd, ["test", "-e", full], limits);
+    const probe = await runRemote(subprocess, cwd, ["test", "-e", op], limits);
     if (probe.exitCode === 0) throw new Error(`already exists: ${full}`);
-    const result = await runRemote(subprocess, cwd, ["touch", "--", full], limits);
+    const result = await runRemote(subprocess, cwd, ["touch", "--", op], limits);
     assertRemoteSucceeded(result, "createFile");
   }
   return { path: full, world };
@@ -541,16 +580,17 @@ async function createFile(ctx: ServiceBag, config: BundleConfig, params: Explore
 
 /** Create a directory (recursive, idempotent — editor semantic). */
 async function createDirectory(ctx: ServiceBag, config: BundleConfig, params: ExplorerParams): Promise<{ path: string; world: ExecutionWorld }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const limits = limitsOf(config);
   const target = await resolveTarget(fs, params);
   const world = worldOf(target);
   const full = fs.processPath(target);
+  const op = opPath(target, world, fs);
   if (world === "local") {
-    await nodeFs.mkdir(full, { recursive: true });
+    await nodeFs.mkdir(op, { recursive: true });
   } else {
-    const { subprocess } = servicesOf(ctx);
-    const result = await runRemote(subprocess, remoteSpawnCwd(params, target), ["mkdir", "-p", "--", full], limits);
+    const { subprocess } = servicesOf(ctx, cwdOf(params));
+    const result = await runRemote(subprocess, remoteSpawnCwd(params, target), ["mkdir", "-p", "--", op], limits);
     assertRemoteSucceeded(result, "createDirectory");
   }
   return { path: full, world };
@@ -565,7 +605,7 @@ async function resolveDestination(fs: FileSystemFace, params: ExplorerParams, fi
 
 /** Rename / move (full-path semantics; cross-world rejected). */
 async function renamePath(ctx: ServiceBag, config: BundleConfig, params: ExplorerParams): Promise<{ from: string; to: string; world: ExecutionWorld }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const limits = limitsOf(config);
   const source = await resolveValue(fs, params, requireString(params.from, "from"));
   const info = await fs.stat(source);
@@ -574,15 +614,17 @@ async function renamePath(ctx: ServiceBag, config: BundleConfig, params: Explore
   const destTarget = await resolveDestination(fs, params, "to", world);
   const from = fs.processPath(source);
   const to = fs.processPath(destTarget);
+  const fromOp = opPath(source, world, fs);
+  const toOp = opPath(destTarget, world, fs);
 
   if (world === "local") {
-    await nodeFs.rename(from, to);
+    await nodeFs.rename(fromOp, toOp);
   } else {
-    const { subprocess } = servicesOf(ctx);
+    const { subprocess } = servicesOf(ctx, cwdOf(params));
     const cwd = remoteSpawnCwd(params, source);
-    let result = await runRemote(subprocess, cwd, ["mv", "-T", "--", from, to], limits);
+    let result = await runRemote(subprocess, cwd, ["mv", "-T", "--", fromOp, toOp], limits);
     if (result.exitCode !== 0 && /invalid option|unknown option/i.test(result.stderr)) {
-      result = await runRemote(subprocess, cwd, ["mv", "--", from, to], limits);
+      result = await runRemote(subprocess, cwd, ["mv", "--", fromOp, toOp], limits);
     }
     assertRemoteSucceeded(result, "rename");
   }
@@ -591,7 +633,7 @@ async function renamePath(ctx: ServiceBag, config: BundleConfig, params: Explore
 
 /** Copy a file or directory (recursively); fails when the destination exists. */
 async function copyPath(ctx: ServiceBag, config: BundleConfig, params: ExplorerParams): Promise<{ from: string; to: string; world: ExecutionWorld }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const limits = limitsOf(config);
   const source = await resolveValue(fs, params, requireString(params.from, "from"));
   const info = await fs.stat(source);
@@ -600,17 +642,19 @@ async function copyPath(ctx: ServiceBag, config: BundleConfig, params: ExplorerP
   const destTarget = await resolveDestination(fs, params, "to", world);
   const from = fs.processPath(source);
   const to = fs.processPath(destTarget);
+  const fromOp = opPath(source, world, fs);
+  const toOp = opPath(destTarget, world, fs);
 
   if (world === "local") {
-    const exists = await nodeFs.stat(to).then(() => true).catch(() => false);
+    const exists = await nodeFs.stat(toOp).then(() => true).catch(() => false);
     if (exists) throw new Error(`already exists: ${to}`);
-    await nodeFs.cp(from, to, { recursive: true });
+    await nodeFs.cp(fromOp, toOp, { recursive: true });
   } else {
-    const { subprocess } = servicesOf(ctx);
+    const { subprocess } = servicesOf(ctx, cwdOf(params));
     const cwd = remoteSpawnCwd(params, source);
-    const probe = await runRemote(subprocess, cwd, ["test", "-e", to], limits);
+    const probe = await runRemote(subprocess, cwd, ["test", "-e", toOp], limits);
     if (probe.exitCode === 0) throw new Error(`already exists: ${to}`);
-    const result = await runRemote(subprocess, cwd, ["cp", "-r", "--", from, to], limits);
+    const result = await runRemote(subprocess, cwd, ["cp", "-r", "--", fromOp, toOp], limits);
     assertRemoteSucceeded(result, "copy");
   }
   return { from, to, world };
@@ -618,29 +662,30 @@ async function copyPath(ctx: ServiceBag, config: BundleConfig, params: ExplorerP
 
 /** Delete a file or EMPTY directory (the client walks children first). */
 async function deletePath(ctx: ServiceBag, config: BundleConfig, params: ExplorerParams): Promise<{ path: string; world: ExecutionWorld }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const limits = limitsOf(config);
   const target = await resolveTarget(fs, params);
   const info = await fs.stat(target);
   if (info === undefined) throw new Error("not-found");
   const world = worldOf(target);
   const full = fs.processPath(target);
+  const op = opPath(target, world, fs);
 
   if (world === "local") {
-    const st = await nodeFs.lstat(full);
+    const st = await nodeFs.lstat(op);
     if (st.isDirectory()) {
-      const children = await nodeFs.readdir(full);
+      const children = await nodeFs.readdir(op);
       if (children.length > 0) throw new Error(`directory not empty: ${full}`);
-      await nodeFs.rmdir(full);
+      await nodeFs.rmdir(op);
     } else {
-      await nodeFs.unlink(full);
+      await nodeFs.unlink(op);
     }
   } else {
-    const { subprocess } = servicesOf(ctx);
+    const { subprocess } = servicesOf(ctx, cwdOf(params));
     const cwd = remoteSpawnCwd(params, target);
     const result = info.type === "directory"
-      ? await runRemote(subprocess, cwd, ["rmdir", "--", full], limits)
-      : await runRemote(subprocess, cwd, ["rm", "--", full], limits);
+      ? await runRemote(subprocess, cwd, ["rmdir", "--", op], limits)
+      : await runRemote(subprocess, cwd, ["rm", "--", op], limits);
     assertRemoteSucceeded(result, "delete");
   }
   return { path: full, world };
@@ -648,7 +693,7 @@ async function deletePath(ctx: ServiceBag, config: BundleConfig, params: Explore
 
 /** Pin the watch root (the client calls this whenever the session cwd changes). */
 async function setRoot(ctx: ServiceBag, _config: BundleConfig, params: ExplorerParams): Promise<{ path: string; world: ExecutionWorld }> {
-  const { fs } = servicesOf(ctx);
+  const { fs } = servicesOf(ctx, cwdOf(params));
   const target = await resolveTarget(fs, params);
   const info = await fs.stat(target);
   if (info === undefined || info.type !== "directory") {

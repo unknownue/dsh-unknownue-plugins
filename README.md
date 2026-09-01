@@ -104,6 +104,67 @@ other route in this bundle.
 > **Remote Windows hosts**: tree/read/write work (SFTP); mkdir/rename/delete
 > need a POSIX shell and are reported as unsupported until a pwsh branch lands.
 
+### 8. Paperspace: in-process paper reader (no Docker)
+
+An academic-paper reader ported from a standalone paperspace monorepo, now
+running INSIDE this DSH profile process:
+
+- **Embedded PostgreSQL** — `@electric-sql/pglite` (WASM build of real
+  PostgreSQL) with a loopback pgwire socket; the paperspace domain layer
+  connects through `postgres` (postgres.js) unchanged, including
+  `FOR UPDATE SKIP LOCKED` job claiming, JSONB search, and partial indexes.
+- **Local object store** — paper assets live under `~/.dsh/paperspace/assets`
+  with deterministic keys (`papers/{arxivId}/{sha1(url)[:16]}.{ext}`); the
+  same five-method `ObjectStore` surface MinIO used, so no schema or API
+  changes were needed.
+- **DSH cordis lifecycle** — the PGlite runtime, socket server, and worker
+  loops are all owned by the host plugin row (`ctx.effect` disposal); config
+  comes from the row in `cordis.patch.yml`.
+- **REST + SSE API** on `ctx.webServer` under
+  `/dsh-unknownue-plugins/paperspace/api/`: paper create/list/detail/delete,
+  asset metadata + streaming, translation job lifecycle, and grounded
+  `chat/stream` SSE (agent chat with `search_paper` / `read_section` tools).
+- **In-process worker** — ingest (arXiv metadata/HTML → markdown with math →
+  images to the object store → single transaction) and translation
+  (glossary → paragraph-by-paragraph snapshots → retry/backoff/stuck-rescan)
+  run as `ctx.effect`-owned timer loops; no separate worker process. Verified
+  against real arXiv (`1706.03762` ingested end-to-end in ~1s).
+
+- **Reader UI tab** — a **论文** tab joins 对话 / 轨迹 / 文件 in the session
+  body: paper library (search/categories/add/ingest polling/retry/delete),
+  full reader (sticky TOC, markdown + math via remark/rehype/KaTeX, figure
+  lightbox), and the translation panel (原文/译文/双语, progress polling,
+  cancel/retry). Paperspace's stylesheet is scoped under `.dsh-paperspace`
+  at build time; KaTeX fonts are served by the host route
+  `/dsh-unknownue-plugins/paperspace/static/fonts`.
+- **Native DSH conversations** — paperspace has NO chat UI of its own: the
+  **与 AI 讨论** button (library cards + reader header) links a DSH session
+  to the paper through the shared **Paperspace** workspace (one entry in the
+  workspace list no matter how many papers), materializes the paper as
+  `workspace/papers/<arxivId>.md`, and switches DSH to that session.
+  `search_paper` / `read_section` are REAL DSH tools resolved per calling
+  session (`exec.agent.sessionId → paper.paper_sessions → paper.papers`);
+  DSH's own fs tools can read the materialized markdown. History, trajectory,
+  model selection, permissions and multi-device access all come from DSH.
+
+- **Gated first-run setup** — paperspace refuses to serve until configured:
+  the **论文** tab shows a setup screen and the **DSH Settings → UnPlugin**
+  section hosts the full options panel, where paperspace
+  owns its own area (storage paths, memory, worker tunables).
+  Saving `configured: true` persists to `<dsh home>/paperspace/settings.json`
+  (same pattern as dsh-workspace-enhancement's `machines.json`) and boots the
+  runtime; disabling stops it immediately. Storage-path changes are saved
+  but flagged `restartRequired` — they take effect on the next `dsh web`
+  restart.
+
+Data lives wherever the user configured it (default `~/.dsh/paperspace/`) —
+back up that directory to back up the whole library. Run
+`node lib/paperspace/paperspace.test.js` for the integration suite
+(65 checks: gating, settings persistence, real PGlite, routes, domain,
+worker wiring, runtime tool loop, object store, fonts, persistence, plus
+mock-LLM e2e for translation and the SSE chat tool loop). See
+`THIRD-PARTY-NOTICES.md` for bundled dependency licenses.
+
 ## Install
 
 ```sh
@@ -182,6 +243,33 @@ profile's `cordis.patch.yml`.
 | `explorer.maxRawBytes` | `8388608` | Binary preview / download cap. |
 | `explorer.structuralGraceMs` | `8000` | Remote structural command grace period. |
 | `explorer.stderrTailBytes` | `8192` | Remote structural stderr tail kept for error messages. |
+
+### Paperspace
+
+User-facing configuration lives in the DSH Settings UI under the
+**UnPlugin** section (paperspace area) and is
+persisted to `<dsh home>/paperspace/settings.json`; the row config below only
+seeds the settings form's initial values. `''` paths mean the default
+(`~/.dsh/paperspace/…`); `DSH_HOME` relocates `<dsh home>`.
+
+| key | default | meaning |
+|-----|---------|---------|
+| `dataDir` | `~/.dsh/paperspace/db` | PGlite data directory. |
+| `assetsDir` | `~/.dsh/paperspace/assets` | Local object-store root. |
+| `workspaceDir` | sibling of `dataDir` | Shared DSH workspace anchor; holds `papers/<arxivId>.md`. |
+| `port` | `0` | pgwire listen port (0 → OS-assigned loopback port). |
+| `initialMemoryBytes` | `536870912` | PGlite WASM initial memory in **bytes**. |
+| `pollMs` | `5000` | Ingest/translation worker poll interval. |
+| `ingestTimeoutMs` | `30000` | arXiv metadata/HTML fetch timeout. |
+| `maxAssetBytes` | `10485760` | Max bytes per downloaded paper image. |
+| `ingestConcurrency` | `2` | Concurrent image downloads. |
+| `translateMaxAttempts` | `3` | Max translation attempts before permanent failure. |
+| `translateStuckAfterMinutes` | `30` | Running jobs older than this are re-queued. |
+| `translateTimeoutMs` | `120000` | Per-LLM-request timeout for translation. |
+| `rescanIntervalMs` | `60000` | Stuck-job rescan interval. |
+
+LLM credentials (chat + translation server-side fallback) read from
+`LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` env vars, exactly like paperspace.
 
 ### SSH Remote Workspaces
 
