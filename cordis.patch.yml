@@ -46,6 +46,21 @@
         translateTimeoutMs: 120000
         rescanIntervalMs: 60000
 
+- insert:
+    # ──────────────────────────────────────────────────────────────────────
+    # Feature #9: tasks — personal task board (kanban + list), user-maintained.
+    # In-process PGlite database at a configurable location (default
+    # <dsh home>/tasks/db); NO agent surface (no model tools, no session
+    # events, no dispatch). The board auto-boots with defaults — the database
+    # directory is user-tunable in Settings → 任务面板 and persisted to
+    # <dsh home>/tasks/settings.json (path changes take effect on restart).
+    # ──────────────────────────────────────────────────────────────────────
+    - id: tasks
+      name: 'dsh-unknownue-plugins/tasks'
+      config:
+        dataDir: ''            # empty → <dsh home>/tasks/db
+        initialMemoryBytes: 134217728
+
 # ──────────────────────────────────────────────────────────────────────────
 # Feature #2: SSH remote workspaces (via dsh-workspace-enhancement).
 # Provides: ctx.ssh / ctx.subprocess / ctx.fs transparent remote providers,

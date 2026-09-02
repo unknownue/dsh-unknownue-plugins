@@ -176,6 +176,8 @@ if (want("host")) {
       "src/host/explorer.test.ts",
       "src/host/paperspace/index.ts",
       "src/host/paperspace/paperspace.test.ts",
+      "src/host/tasks/index.ts",
+      "src/host/tasks/tasks.test.ts",
     ],
     outdir: "lib",
     bundle: true,
@@ -194,5 +196,5 @@ if (want("host")) {
     sourcemap: false,
   });
 
-  console.log("✓ Built host modules (index, makefile, platform, explorer, explorer.test, paperspace, paperspace.test)");
+  console.log("✓ Built host modules (index, makefile, platform, explorer, explorer.test, paperspace, paperspace.test, tasks, tasks.test)");
 }

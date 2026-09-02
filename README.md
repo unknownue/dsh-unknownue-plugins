@@ -165,6 +165,41 @@ worker wiring, runtime tool loop, object store, fonts, persistence, plus
 mock-LLM e2e for translation and the SSE chat tool loop). See
 `THIRD-PARTY-NOTICES.md` for bundled dependency licenses.
 
+### 9. Tasks: personal task board (kanban + list)
+
+A **任务** tab (between 文件 and 论文) hosts a personal task board the user
+maintains entirely by hand — there is **no agent surface** (no model-facing
+tools, no session-log events, no dispatch). Four kanban columns (待办 /
+进行中 / 阻塞 / 完成) with drag-and-drop between columns, a dense list view
+(including archived cards), and a card editor (title, Markdown body, status,
+priority, due date, archive/restore/delete).
+
+- **PGlite database** — the same in-process PostgreSQL used by paperspace,
+  but driven through PGlite's native query API (no pgwire socket, no
+  postgres.js). The database location is **user-configurable**: defaults to
+  `<dsh home>/tasks/db`, overridable in `cordis.patch.yml` (row `tasks`,
+  key `dataDir`) and in **DSH Settings → 任务面板**, persisted to
+  `<dsh home>/tasks/settings.json`. Changing the location while running is
+  saved but flagged `restartRequired` — it takes effect on the next
+  `dsh web` restart.
+- **Auto-boot** — unlike paperspace there is no `configured` gate (no
+  credentials are involved); the board is usable immediately.
+- **Fractional ranking** — cards carry a `rank` (midpoint between neighbours);
+  a drag/reorder writes exactly one row and concurrent edits cannot scramble
+  a column.
+- **Revision polling** — board state deliberately lives outside the DSH
+  session log; the tab polls one integer (`meta.revision`, 5s) and refetches
+  only when it moved, which also covers edits from another browser tab.
+- **Loopback-fenced REST** on `ctx.webServer` under
+  `/dsh-unknownue-plugins/tasks/api`: `GET /board` (+`?archived=1`),
+  `GET /revision`, `POST /cards`, `PATCH /cards/:id`, `POST /cards/:id/move`
+  (`before_id`/`after_id` for exact placement), `POST /cards/:id/archive`,
+  `POST /cards/:id/restore`, `DELETE /cards/:id`, `GET|POST /settings`.
+
+Run `node lib/tasks/tasks.test.js` for the integration suite (real PGlite
+against a temp `DSH_HOME`: routes, validation, ranking, settings persistence,
+restartRequired flag, dispose → reopen persistence, in-memory boot).
+
 ## Install
 
 ```sh
@@ -175,7 +210,8 @@ Restart `dsh web`, refresh the page. The Makefile, open-workspace, and
 open-terminal buttons appear in the session header; the width control appears
 in the sidebar footer; the **文件** tab (file explorer) joins 对话 / 轨迹 in
 the session body; the workspace enhancement adds remote workspace capabilities
-to the native workspace picker.
+to the native workspace picker; the **任务** tab (personal task board) sits
+between 文件 and 论文 and is usable immediately.
 
 > **First install with DSH's supply-chain pnpm**: native build scripts are
 > blocked by default — allow them once per profile in `pnpm-workspace.yaml`
@@ -268,6 +304,21 @@ seeds the settings form's initial values. `''` paths mean the default
 | `translateTimeoutMs` | `120000` | Per-LLM-request timeout for translation. |
 | `rescanIntervalMs` | `60000` | Stuck-job rescan interval. |
 
+### Tasks
+
+User-facing configuration lives in the DSH Settings UI under the
+**任务面板** section and is persisted to `<dsh home>/tasks/settings.json`; the
+row config below only seeds the settings form's initial value. `''` paths mean
+the default (`<dsh home>/tasks/…`); `DSH_HOME` relocates `<dsh home>`. The
+board auto-boots with defaults (no `configured` gate); a `dataDir` change is
+saved but flagged `restartRequired` and takes effect on the next `dsh web`
+restart.
+
+| key | default | meaning |
+|-----|---------|---------|
+| `dataDir` | `<dsh home>/tasks/db` | PGlite database directory (back this up to migrate the board). |
+| `initialMemoryBytes` | `134217728` | PGlite WASM initial memory in bytes. |
+
 LLM credentials (chat + translation server-side fallback) read from
 `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` env vars, exactly like paperspace.
 
@@ -350,6 +401,11 @@ npm test
 It exercises the remote-aware routing (`ssh://` / `dsw-routes` normalization,
 spawn cwd pinning) and the full-path structural operations against a fake
 `ctx.fs` / `ctx.subprocess` pair for both the local and remote worlds.
+
+The tasks host half ships its own integration suite (`src/host/tasks/tasks.test.ts`,
+built to `lib/tasks/tasks.test.js`) that boots the real PGlite runtime against
+a temp `DSH_HOME` and covers the routes, validation, fractional ranking,
+settings persistence and the dispose → reopen persistence path.
 
 ## License
 

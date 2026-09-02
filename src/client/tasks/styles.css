@@ -1,0 +1,428 @@
+/*
+ * Task-board styles. Every selector is hand-scoped under `.dsh-tasks` (this
+ * file is embedded verbatim — no build-time scoping), and uses DSH design
+ * tokens (`--dsw-*`) so light/dark themes follow automatically.
+ */
+
+.dsh-tasks {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 12px 16px;
+  box-sizing: border-box;
+  font-family: var(--dsw-font-family, inherit);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* ── header ─────────────────────────────────────────── */
+.dsh-tasks .tk-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  margin-bottom: 12px;
+}
+
+.dsh-tasks .tk-modes {
+  display: inline-flex;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.dsh-tasks .tk-mode {
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+
+.dsh-tasks .tk-mode-on {
+  background: var(--dsw-alias-state-business-primary);
+  color: #fff;
+}
+
+.dsh-tasks .tk-archived-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.dsh-tasks .tk-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.dsh-tasks .tk-btn {
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.dsh-tasks .tk-btn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dsh-tasks .tk-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.dsh-tasks .tk-btn-primary {
+  background: var(--dsw-alias-state-business-primary);
+  border-color: var(--dsw-alias-state-business-primary);
+  color: #fff;
+}
+
+.dsh-tasks .tk-btn-primary:hover {
+  background: var(--dsw-alias-state-business-primary);
+  opacity: 0.9;
+}
+
+.dsh-tasks .tk-btn-danger {
+  border-color: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dsh-tasks .tk-link-btn {
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-state-business-primary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.dsh-tasks .tk-error {
+  flex: none;
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dsh-tasks .tk-notice {
+  flex: none;
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--dsw-alias-state-success-primary, #2e9e5b);
+}
+
+/* ── board ──────────────────────────────────────────── */
+.dsh-tasks .tk-board {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dsh-tasks .tk-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.dsh-tasks .tk-col-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.dsh-tasks .tk-count {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-interactive-bg-hover);
+  border-radius: 9px;
+  padding: 0 8px;
+  line-height: 18px;
+}
+
+.dsh-tasks .tk-col-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dsh-tasks .tk-card {
+  flex: none;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  padding: 8px 10px;
+  cursor: pointer;
+  box-shadow: var(--dsw-shadow-lv1, none);
+}
+
+.dsh-tasks .tk-card:hover {
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.dsh-tasks .tk-card-title {
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+  margin-bottom: 6px;
+}
+
+.dsh-tasks .tk-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dsh-tasks .tk-prio {
+  font-size: 10px;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-tasks .tk-prio-high {
+  border-color: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dsh-tasks .tk-prio-low {
+  border-color: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.dsh-tasks .tk-due {
+  font-size: 10px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-tasks .tk-due-over {
+  color: var(--dsw-alias-state-error-primary);
+  font-weight: 600;
+}
+
+.dsh-tasks .tk-col-empty {
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ── list ───────────────────────────────────────────── */
+.dsh-tasks .tk-list-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.dsh-tasks .tk-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.dsh-tasks .tk-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  position: sticky;
+  top: 0;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.dsh-tasks .tk-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.dsh-tasks .tk-table tbody tr {
+  cursor: pointer;
+}
+
+.dsh-tasks .tk-table tbody tr:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dsh-tasks .tk-row-archived {
+  opacity: 0.55;
+}
+
+.dsh-tasks .tk-cell-title {
+  font-weight: 600;
+}
+
+.dsh-tasks .tk-cell-muted {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-tasks .tk-foot {
+  flex: none;
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ── editor modal ───────────────────────────────────── */
+.dsh-tasks .tk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.dsh-tasks .tk-mask {
+  position: absolute;
+  inset: 0;
+  background: var(--dsw-alias-bg-mask-1);
+  backdrop-filter: var(--dsw-mask-blur);
+}
+
+.dsh-tasks .tk-dialog {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(560px, 100%);
+  max-height: 80vh;
+  overflow: auto;
+  padding: 16px 18px;
+  border: 1px solid var(--dsw-alias-border-inverted);
+  border-radius: 16px;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-shadow-lv3);
+}
+
+.dsh-tasks .tk-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dsh-tasks .tk-dialog-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.dsh-tasks .tk-close {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px;
+}
+
+.dsh-tasks .tk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-tasks .tk-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.4fr;
+  gap: 10px;
+}
+
+.dsh-tasks .tk-input,
+.dsh-tasks .tk-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-family: var(--dsw-font-family, inherit);
+}
+
+.dsh-tasks .tk-input {
+  height: 30px;
+  padding: 0 10px;
+}
+
+.dsh-tasks .tk-textarea {
+  padding: 8px 10px;
+  resize: vertical;
+  line-height: 18px;
+}
+
+.dsh-tasks .tk-dialog-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.dsh-tasks .tk-foot-left,
+.dsh-tasks .tk-foot-right {
+  display: inline-flex;
+  gap: 8px;
+}
+
+/* ── settings section ───────────────────────────────── */
+.dsh-tasks .tk-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 640px;
+}
+
+.dsh-tasks .tk-settings-head h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.dsh-tasks .tk-settings-head p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-tasks .tk-settings-meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}

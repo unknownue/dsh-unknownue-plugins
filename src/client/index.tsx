@@ -12,6 +12,7 @@ import { OpenTerminalButton } from "./toolbar/OpenTerminalButton";
 import { WidthControl, readWidthPct, applyWidth, setWidthPct } from "./toolbar/WidthControl";
 import { applyExplorerEditor } from "./explorer-editor";
 import { applyPaperspaceTab } from "./paperspace/index";
+import { applyTasksTab } from "./tasks/index";
 
 // Inject explorer editor CSS
 import stylesCss from "./styles.css";
@@ -139,6 +140,7 @@ function apply(ctx: any): void {
 
   applyExplorerEditor(ctx);
   applyPaperspaceTab(ctx);
+  applyTasksTab(ctx);
 }
 
 export { apply, inject };

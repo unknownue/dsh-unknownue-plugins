@@ -1,13 +1,14 @@
 {
   "name": "dsh-unknownue-plugins",
   "version": "0.4.0",
-  "description": "Personal DSH plugin bundle (unknownue): Makefile panel, content-width, open-workspace, SSH remote workspaces, authenticated gateway, file explorer, and an in-process paperspace academic-paper reader (PGlite, no Docker).",
+  "description": "Personal DSH plugin bundle (unknownue): Makefile panel, content-width, open-workspace, SSH remote workspaces, authenticated gateway, file explorer, a personal task board (PGlite), and an in-process paperspace academic-paper reader (PGlite, no Docker).",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
     "./paperspace": "./lib/paperspace/index.js",
+    "./tasks": "./lib/tasks/index.js",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -15,7 +16,7 @@
     "build:host": "node esbuild.config.mjs host",
     "build": "node esbuild.config.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.host.json",
-    "test": "node lib/explorer.test.js && node lib/paperspace/paperspace.test.js"
+    "test": "node lib/explorer.test.js && node lib/paperspace/paperspace.test.js && node lib/tasks/tasks.test.js"
   },
   "files": [
     "lib",
@@ -43,7 +44,11 @@
     "papers",
     "reader",
     "translation",
-    "pglite"
+    "pglite",
+    "tasks",
+    "task-board",
+    "kanban",
+    "todo"
   ],
   "engines": {
     "node": ">=22.19.0"
