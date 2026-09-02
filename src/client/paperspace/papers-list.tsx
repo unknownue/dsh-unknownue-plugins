@@ -4,12 +4,24 @@
  */
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { PAPERS_API } from './api';
+import ThemeSwitch from './theme-switch';
+import type { PaperspaceTheme } from './theme';
 import type { Paper } from './types';
 
 const ARXIV_ID_RE = /^\d{4}\.\d{5}(v\d+)?$/;
 const DEFAULT_CATEGORIES = ['cs.AI', 'cs.CL', 'cs.CV', 'cs.LG', 'cs.RO', 'cs.DC', 'cs.LO'];
 
-export default function PapersList({ onOpen, onDiscuss }: { onOpen: (arxivId: string) => void; onDiscuss: (arxivId: string) => void }) {
+export default function PapersList({
+  theme,
+  onThemeChange,
+  onOpen,
+  onDiscuss,
+}: {
+  theme: PaperspaceTheme;
+  onThemeChange: (next: PaperspaceTheme) => void;
+  onOpen: (arxivId: string) => void;
+  onDiscuss: (arxivId: string) => void;
+}) {
   const [papers, setPapers] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -116,6 +128,7 @@ export default function PapersList({ onOpen, onDiscuss }: { onOpen: (arxivId: st
           <h1>Paper workspace</h1>
           <p>Manage arXiv papers and use AI for close reading.</p>
         </div>
+        <ThemeSwitch value={theme} onChange={onThemeChange} />
       </header>
       <div className="library-controls">
         <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search title / arXiv ID / author…" aria-label="Search papers" />
@@ -143,58 +156,55 @@ export default function PapersList({ onOpen, onDiscuss }: { onOpen: (arxivId: st
           </button>
         </section>
       ) : visible.length ? (
-        <section className="paper-grid">
+        <section className="paper-list">
           {visible.map(paper => (
-            <article className="paper-card" key={paper.arxivId}>
-              <div>
-                <h2>
-                  {paper.status === 'ready' ? (
-                    <button type="button" className="paper-title-link" onClick={() => onOpen(paper.arxivId)}>
-                      {paper.title}
-                    </button>
-                  ) : (
-                    paper.title
+            <article className="paper-item" key={paper.arxivId}>
+              <div className="paper-item-body">
+                {paper.status === 'ready' ? (
+                  <button type="button" className="paper-item-title" onClick={() => onOpen(paper.arxivId)}>
+                    {paper.title}
+                  </button>
+                ) : (
+                  <span className="paper-item-title">{paper.title}</span>
+                )}
+                <div className="paper-item-meta">
+                  <span>arXiv:{paper.arxivId}</span>
+                  {paper.publishedAt && <span> · {paper.publishedAt.slice(0, 10)}</span>}
+                  {paper.categories.length > 0 && <span> · {paper.categories.join(', ')}</span>}
+                  {paper.status === 'ingesting' && (
+                    <span className="ingesting">
+                      {' '}
+                      · <span className="spinner" /> 摄取中…
+                    </span>
                   )}
-                </h2>
-                <p className="paper-id">arXiv:{paper.arxivId}</p>
+                  {paper.status === 'failed' && (
+                    <span className="failed"> · 摄取失败{paper.errorMessage ? `：${paper.errorMessage}` : ''}</span>
+                  )}
+                </div>
               </div>
-              {paper.status === 'ready' && (
-                <>
-                  <div className="tag-row">
-                    {paper.categories.map(tag => (
-                      <span className="tag" key={tag}>
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="paper-abstract">{paper.abstract}</p>
-                  <div className="card-actions">
-                    <button className="button compact" onClick={() => onOpen(paper.arxivId)}>
-                      阅读
-                    </button>
-                    <button className="button compact primary" onClick={() => onDiscuss(paper.arxivId)}>
-                      与 AI 讨论
-                    </button>
-                  </div>
-                </>
-              )}
-              {paper.status === 'ingesting' && (
-                <p className="ingesting">
-                  <span className="spinner" /> Ingesting paper…
-                </p>
-              )}
-              {paper.status === 'failed' && (
-                <>
-                  <p className="failed">⚠ Ingestion failed: {paper.errorMessage ?? 'unsupported source content'}</p>
-                  <div className="card-actions">
-                    <button className="button compact" onClick={() => void retry(paper)}>
-                      Retry
-                    </button>
-                    <button className="button compact ghost" onClick={() => void remove(paper)}>
-                      Delete
-                    </button>
-                  </div>
-                </>
+              {(paper.status === 'ready' || paper.status === 'failed') && (
+                <div className="paper-item-actions">
+                  {paper.status === 'ready' && (
+                    <>
+                      <button type="button" className="text-button" onClick={() => onOpen(paper.arxivId)}>
+                        阅读
+                      </button>
+                      <button type="button" className="text-button muted" onClick={() => onDiscuss(paper.arxivId)}>
+                        与 AI 讨论
+                      </button>
+                    </>
+                  )}
+                  {paper.status === 'failed' && (
+                    <>
+                      <button type="button" className="text-button" onClick={() => void retry(paper)}>
+                        重试
+                      </button>
+                      <button type="button" className="text-button muted" onClick={() => void remove(paper)}>
+                        删除
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
             </article>
           ))}

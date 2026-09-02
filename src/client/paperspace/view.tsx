@@ -2,14 +2,52 @@
  * Paperspace tab root: setup screen (first-run, mandatory configuration) →
  * library list ⇄ paper reader, plus the shared model settings modal.
  */
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import PapersList from './papers-list';
 import Reader from './reader';
 import ModelSettingsModal from './model-settings-modal';
 import { sessionsUrl } from './api';
 import { fetchSettings, saveSettings, type SettingsView } from './settings-page';
+import { readPaperspaceTheme, rememberPaperspaceTheme, type PaperspaceTheme } from './theme';
 
 type Route = { kind: 'list' } | { kind: 'reader'; arxivId: string };
+
+/**
+ * Tab switching unmounts PaperspaceView (DSH renders only the active
+ * conversation.view), so the route lives OUTSIDE the component: module state
+ * survives tab switches, and a sessionStorage mirror survives page reloads.
+ */
+const ROUTE_STORAGE_KEY = 'dsh-unknownue-plugins/paperspace:route';
+let memoryRoute: Route | null = null;
+
+function isRoute(value: unknown): value is Route {
+  if (value === null || typeof value !== 'object') return false;
+  const route = value as { kind?: unknown; arxivId?: unknown };
+  return route.kind === 'list' || (route.kind === 'reader' && typeof route.arxivId === 'string');
+}
+
+function readInitialRoute(): Route {
+  if (memoryRoute) return memoryRoute;
+  try {
+    const raw = sessionStorage.getItem(ROUTE_STORAGE_KEY);
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (isRoute(parsed)) return parsed;
+    }
+  } catch {
+    /* storage unavailable — fall back to the list */
+  }
+  return { kind: 'list' };
+}
+
+function rememberRoute(route: Route): void {
+  memoryRoute = route;
+  try {
+    sessionStorage.setItem(ROUTE_STORAGE_KEY, JSON.stringify(route));
+  } catch {
+    /* storage unavailable — module state still keeps the tab switch working */
+  }
+}
 
 function SetupScreen({ defaults, onConfigured }: { defaults: SettingsView['defaults']; onConfigured: () => void }) {
   const [dataDir, setDataDir] = useState(defaults.dataDir);
@@ -100,11 +138,74 @@ export interface PaperspaceWorkspacesFace {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+/** DSH paints its conversation region with `--dsw-alias-bg-base`; these are
+ *  the light/dark page values used when the tab's theme is pinned. */
+const PAGE_DARK = '#151517';
+const PAGE_LIGHT = '#ffffff';
+
+function composerSeatGradient(page: string): string {
+  return `linear-gradient(180deg, transparent 0px, ${page} 36px)`;
+}
+
 export default function PaperspaceView({ sessions, workspaces }: { sessions?: PaperspaceSessionsFace; workspaces?: PaperspaceWorkspacesFace }) {
-  const [route, setRoute] = useState<Route>({ kind: 'list' });
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [route, setRouteState] = useState<Route>(readInitialRoute);
+  const navigate = useCallback((next: Route) => {
+    rememberRoute(next);
+    setRouteState(next);
+  }, []);
+  // Paperspace-local theme, independent from DSH's light/dark setting.
+  const [psTheme, setPsTheme] = useState<PaperspaceTheme>(readPaperspaceTheme);
+  const changeTheme = useCallback((next: PaperspaceTheme) => {
+    rememberPaperspaceTheme(next);
+    setPsTheme(next);
+  }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [settingsFailed, setSettingsFailed] = useState(false);
+
+  // When the tab's theme is pinned (light/dark), paint DSH's view container
+  // and scrollport behind the tab so the page background no longer reuses
+  // DSH's theme. In auto mode DSH's own background stays untouched. Every
+  // inline style is restored when the tab unmounts or the mode changes.
+  useLayoutEffect(() => {
+    if (psTheme === 'auto') return;
+    const root = rootRef.current;
+    if (!root) return;
+    const page = psTheme === 'dark' ? PAGE_DARK : PAGE_LIGHT;
+    const gradient = composerSeatGradient(page);
+    const restores: Array<() => void> = [];
+    const paint = (el: HTMLElement | null) => {
+      if (!el) return;
+      const previous = el.style.backgroundColor;
+      el.style.backgroundColor = page;
+      restores.push(() => {
+        el.style.backgroundColor = previous;
+      });
+    };
+    // The view area container directly hosting the tab…
+    paint(root.parentElement);
+    // …and DSH's scrollport (the ancestor that actually scrolls the view),
+    // plus its sticky composer gradient, both of which reuse DSH tokens.
+    let node: HTMLElement | null = root.parentElement;
+    while (node) {
+      const { overflowY } = getComputedStyle(node);
+      if (overflowY === 'auto' || overflowY === 'scroll') {
+        paint(node);
+        const seat = node.querySelector<HTMLElement>('[class*="composerSeat"]');
+        if (seat) {
+          const previous = seat.style.background;
+          seat.style.background = gradient;
+          restores.push(() => {
+            seat.style.background = previous;
+          });
+        }
+        break;
+      }
+      node = node.parentElement;
+    }
+    return () => restores.forEach(restore => restore());
+  }, [psTheme]);
 
   const reload = useCallback(async () => {
     const next = await fetchSettings();
@@ -215,7 +316,7 @@ export default function PaperspaceView({ sessions, workspaces }: { sessions?: Pa
   );
 
   return (
-    <div className="dsh-paperspace">
+    <div className="dsh-paperspace" ref={rootRef} data-ps-theme={psTheme === 'auto' ? undefined : psTheme}>
       {settings === null ? (
         <main className="paper-workbench">
           {settingsFailed ? (
@@ -236,11 +337,20 @@ export default function PaperspaceView({ sessions, workspaces }: { sessions?: Pa
         <SetupScreen defaults={settings.defaults} onConfigured={() => void reload()} />
       ) : (
         <>
-          {route.kind === 'list' && <PapersList onOpen={arxivId => setRoute({ kind: 'reader', arxivId })} onDiscuss={arxivId => void discuss(arxivId)} />}
+          {route.kind === 'list' && (
+            <PapersList
+              theme={psTheme}
+              onThemeChange={changeTheme}
+              onOpen={arxivId => navigate({ kind: 'reader', arxivId })}
+              onDiscuss={arxivId => void discuss(arxivId)}
+            />
+          )}
           {route.kind === 'reader' && (
             <Reader
               arxivId={route.arxivId}
-              onBack={() => setRoute({ kind: 'list' })}
+              theme={psTheme}
+              onThemeChange={changeTheme}
+              onBack={() => navigate({ kind: 'list' })}
               onOpenSettings={() => setSettingsOpen(true)}
               onDiscuss={() => void discuss(route.arxivId)}
             />

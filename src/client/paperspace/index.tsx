@@ -25,24 +25,98 @@ const THEME_CSS = `
   color-scheme: light dark;
   font-family: var(--dsw-font-family, inherit);
   color: var(--ps-text, #18181b);
-  /* fixed "paper" palette (reading surface stays light) */
+  /* "paper" reading-surface palette (light paper by default) */
   --paper: #ffffff;
   --surface: #fafafa;
   --ink: #18181b;
-  /* theme-aware tokens */
-  --ps-text: var(--dsw-alias-label-primary, #18181b);
-  --ps-text-2: var(--dsw-alias-label-secondary, #71717a);
-  --ps-text-3: var(--dsw-alias-label-tertiary, #a1a1aa);
-  --ps-bg: var(--dsw-alias-bg-overlay, #ffffff);
-  --ps-bg-2: var(--dsw-alias-bg-layer-2, #fafafa);
-  --ps-bg-3: var(--dsw-alias-bg-layer-3, #f4f4f5);
-  --ps-line: var(--dsw-alias-border-l2, #e4e4e7);
-  --ps-line-soft: color-mix(in srgb, var(--ps-line, #e4e4e7) 55%, transparent);
-  --ps-line-strong: var(--dsw-alias-border-inverted, #d4d4d8);
-  --ps-brand: var(--dsw-alias-state-business-primary, #18181b);
-  --ps-danger: var(--dsw-alias-danger-fg, #b42318);
-  --ps-hover: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, 0.05));
-  --ps-selected: var(--dsw-alias-interactive-bg-selected, rgba(77, 171, 247, 0.15));
+  --ink-2: #71717a;
+  --ink-3: #52525b;
+  --paper-line: #e4e4e7;
+  --paper-code-bg: #f4f4f5;
+  --paper-pre-bg: #27272a;
+  --paper-pre-fg: #fafafa;
+  --paper-link: #2563eb;
+  --paper-note-fg: #b45309;
+  --paper-img-bg: transparent;
+  /* theme-aware chrome tokens (follow DSH's design tokens in auto mode) */
+  --ps-text: var(--dsw-alias-label-primary, #0f1115);
+  --ps-text-2: var(--dsw-alias-label-secondary, #61666b);
+  --ps-text-3: var(--dsw-alias-label-tertiary, #81858c);
+  --ps-bg: var(--dsw-alias-bg-overlay, #e9ecf2);
+  --ps-bg-2: var(--dsw-alias-bg-layer-2, #ffffff);
+  --ps-bg-3: var(--dsw-alias-bg-layer-3, #ffffff);
+  --ps-line: var(--dsw-alias-border-l2, #0000001a);
+  --ps-line-soft: color-mix(in srgb, var(--ps-line, #0000001a) 55%, transparent);
+  --ps-line-strong: var(--dsw-alias-border-inverted, #0000001a);
+  --ps-brand: var(--dsw-alias-state-business-primary, #4176e6);
+  --ps-danger: var(--dsw-alias-state-error-primary, #ec1313);
+  --ps-hover: var(--dsw-alias-interactive-bg-hover, #2631480f);
+  --ps-selected: rgba(77, 171, 247, 0.15);
+}
+
+/* Auto mode under DSH's dark theme: flip the paper palette onto a dark
+   reading surface (chrome tokens above already follow the alias vars).
+   The :not() guard lets a pinned light mode override DSH's dark. */
+body[data-ds-dark-theme] .dsh-paperspace:not([data-ps-theme='light']),
+.dsh-paperspace[data-ps-theme='dark'] {
+  --paper: #1a1a1d;
+  --surface: #232327;
+  --ink: #e7e7ec;
+  --ink-2: #a6a6b2;
+  --ink-3: #8b8b98;
+  --paper-line: #313138;
+  --paper-code-bg: #2b2b31;
+  --paper-pre-bg: #131316;
+  --paper-pre-fg: #d6d6dc;
+  --paper-link: #8fb3ff;
+  --paper-note-fg: #dca15f;
+  /* figures are authored for white paper — keep a white mat in dark mode */
+  --paper-img-bg: #ffffff;
+}
+
+/* Forced dark: chrome + paper both pinned dark, independent of DSH. Values
+   mirror DSH's own dark alias palette. */
+.dsh-paperspace[data-ps-theme='dark'] {
+  color-scheme: dark;
+  --ps-text: #f9fafb;
+  --ps-text-2: #cfd3d6;
+  --ps-text-3: #adb2b8;
+  --ps-bg: #43454a;
+  --ps-bg-2: #2c2c2e;
+  --ps-bg-3: #353638;
+  --ps-line: #ffffff1f;
+  --ps-line-strong: #ffffff0f;
+  --ps-brand: #679efe;
+  --ps-danger: #f25a5a;
+  --ps-hover: #ffffff14;
+  --ps-selected: #ffffff24;
+}
+
+/* Forced light: chrome pinned light even when DSH itself is dark. Values
+   mirror DSH's own light alias palette. */
+.dsh-paperspace[data-ps-theme='light'] {
+  color-scheme: light;
+  --ps-text: #0f1115;
+  --ps-text-2: #61666b;
+  --ps-text-3: #81858c;
+  --ps-bg: #e9ecf2;
+  --ps-bg-2: #ffffff;
+  --ps-bg-3: #ffffff;
+  --ps-line: #0000001a;
+  --ps-line-strong: #0000001a;
+  --ps-brand: #4176e6;
+  --ps-danger: #ec1313;
+  --ps-hover: #2631480f;
+  --ps-selected: rgba(77, 171, 247, 0.15);
+}
+
+/* The composer (input box) belongs to the chat view — hide it while the
+   paperspace tab owns the conversation view. DSH renders the composer for
+   the active view regardless of which tab it is, so the seat is hidden via
+   CSS when the paperspace root is present in the active conversation. */
+[data-phase='active']:has(.dsh-paperspace) [data-composer-seat],
+[class*='scrollBody']:has(.dsh-paperspace) [class*='composerSeat'] {
+  display: none !important;
 }
 `;
 

@@ -4,11 +4,20 @@
  * Chat moved into DSH's native conversation (「与 AI 讨论」button).
  */
 import GithubSlugger from 'github-slugger';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { paperUrl } from './api';
 import { ModelSelectionProvider } from './model-selection';
+import ThemeSwitch from './theme-switch';
+import type { PaperspaceTheme } from './theme';
 import TranslationPanel, { type InitialTranslation } from './translation-panel';
 import type { PaperDetail } from './types';
+
+/**
+ * Last scroll offset per paper. Tab switches unmount the reader (DSH renders
+ * only the active conversation.view), so the offset is kept at module level
+ * and restored when the same paper is reopened.
+ */
+const scrollOffsets = new Map<string, number>();
 
 function buildToc(markdown: string) {
   const slugger = new GithubSlugger();
@@ -22,11 +31,15 @@ function buildToc(markdown: string) {
 
 export default function Reader({
   arxivId,
+  theme,
+  onThemeChange,
   onBack,
   onOpenSettings,
   onDiscuss,
 }: {
   arxivId: string;
+  theme: PaperspaceTheme;
+  onThemeChange: (next: PaperspaceTheme) => void;
   onBack: () => void;
   onOpenSettings: () => void;
   onDiscuss: () => void;
@@ -35,6 +48,79 @@ export default function Reader({
   const [error, setError] = useState('');
   const [initialTranslation, setInitialTranslation] = useState<InitialTranslation>(null);
   const [initialMode] = useState<'original' | 'translated' | 'bilingual'>('original');
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  // Restore the reader's scroll position. The element that actually scrolls
+  // is NOT necessarily `.reader-main`: DSH's conversation layout puts the view
+  // inside its own scrollport (`.scrollBody`, `overflow:hidden auto` with
+  // `flex:1 0 auto` on the view area), so we track whichever scrollable
+  // ancestor (or the reader-main itself) is doing the scrolling.
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const saved = scrollOffsets.get(arxivId);
+
+    const scrollables = (): HTMLElement[] => {
+      const list: HTMLElement[] = [];
+      let node: HTMLElement | null = main;
+      while (node) {
+        const { overflowY } = getComputedStyle(node);
+        if (overflowY === 'auto' || overflowY === 'scroll') list.push(node);
+        node = node.parentElement;
+      }
+      const root = document.scrollingElement as HTMLElement | null;
+      if (root && !list.includes(root)) list.push(root);
+      return list;
+    };
+
+    // Programmatic scrollTop sets (ours or DSH's own reset) fire scroll
+    // events asynchronously, so real user intent is detected from input
+    // events instead — retries stop only when the user actually scrolls.
+    let userIntent = false;
+    const markUser = () => {
+      userIntent = true;
+    };
+    const apply = () => {
+      if (saved === undefined || saved <= 0 || userIntent) return;
+      for (const el of scrollables()) el.scrollTop = saved;
+    };
+
+    const onScroll = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      // Only the reader itself or an ancestor scrollport counts.
+      if (target !== main && !target.contains(main)) return;
+      if (target.scrollTop > 0) scrollOffsets.set(arxivId, target.scrollTop);
+    };
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    window.addEventListener('wheel', markUser, { passive: true });
+    window.addEventListener('touchstart', markUser, { passive: true });
+    window.addEventListener('keydown', markUser, true);
+
+    // Apply immediately, again on the next frames (DSH may reset its
+    // scrollport in a later effect when the view switches), and once more
+    // after late layout settles — unless the user already started scrolling.
+    apply();
+    const rafA = requestAnimationFrame(apply);
+    const rafB = requestAnimationFrame(apply);
+    const retry = window.setTimeout(apply, 400);
+
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('wheel', markUser);
+      window.removeEventListener('touchstart', markUser);
+      window.removeEventListener('keydown', markUser, true);
+      cancelAnimationFrame(rafA);
+      cancelAnimationFrame(rafB);
+      window.clearTimeout(retry);
+      for (const el of scrollables()) {
+        if (el.scrollTop > 0) {
+          scrollOffsets.set(arxivId, el.scrollTop);
+          break;
+        }
+      }
+    };
+  }, [paper, arxivId]);
 
   const load = useCallback(async () => {
     try {
@@ -91,7 +177,7 @@ export default function Reader({
             </a>
           ))}
         </aside>
-        <main className="reader-main">
+        <main className="reader-main" ref={mainRef}>
           <header className="paper-header">
             <button type="button" className="back-link" onClick={onBack}>
               ← Back to papers
@@ -108,6 +194,7 @@ export default function Reader({
                 ))}
               </div>
               <div>
+                <ThemeSwitch value={theme} onChange={onThemeChange} />
                 {paper.status === 'ready' && (
                   <button className="button compact primary" onClick={onDiscuss}>
                     与 AI 讨论
