@@ -113,23 +113,19 @@
   color: var(--dsw-alias-state-error-primary);
 }
 
-.dsh-tasks .tk-notice {
-  flex: none;
-  margin: 0 0 10px;
-  font-size: 12px;
-  color: var(--dsw-alias-state-success-primary, #2e9e5b);
-}
-
 /* ── board ──────────────────────────────────────────── */
 .dsh-tasks .tk-board {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
+  align-items: stretch;
   gap: 10px;
+  overflow-x: auto;
 }
 
 .dsh-tasks .tk-col {
+  flex: 0 0 280px;
+  width: 280px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -399,30 +395,4 @@
 .dsh-tasks .tk-foot-right {
   display: inline-flex;
   gap: 8px;
-}
-
-/* ── settings section ───────────────────────────────── */
-.dsh-tasks .tk-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 640px;
-}
-
-.dsh-tasks .tk-settings-head h2 {
-  margin: 0 0 6px;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.dsh-tasks .tk-settings-head p {
-  margin: 0;
-  font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.dsh-tasks .tk-settings-meta {
-  margin: 0;
-  font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
 }
