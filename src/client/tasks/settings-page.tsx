@@ -1,17 +1,18 @@
 /**
- * Task-board settings section (registered as its own `settings.section` entry,
- * labelled 任务面板 — independent of the paperspace-owned UnPlugin page).
+ * Task-board settings section, rendered INSIDE the UnPlugin settings page
+ * (paperspace owns that page; every bundle feature keeps one area there).
+ * Uses the paperspace page's own classes (bundle-section / ps-row / button)
+ * so styling stays uniform, and hardcoded Chinese copy like that page.
  *
  * The only user-tunable is the PGlite database directory; changing it while
  * the runtime is up is persisted but flagged restartRequired (PGlite booted
  * against the old directory).
  */
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import React from 'react';
 import { fetchTasksSettings, saveTasksSettings, type TasksSettingsView } from './api';
-import type { TasksLocale } from './view';
 
-export default function TasksSettings({ t }: { t: TasksLocale }) {
+export default function TasksSettingsSection() {
   const [view, setView] = useState<TasksSettingsView | null>(null);
   const [dataDir, setDataDir] = useState('');
   const [msg, setMsg] = useState('');
@@ -25,64 +26,59 @@ export default function TasksSettings({ t }: { t: TasksLocale }) {
       setDataDir((next.settings ?? next.defaults).dataDir);
       setErr('');
     } catch {
-      setErr(t('settings.loadFailed'));
+      setErr('无法访问任务面板 host 路由（插件 host 未运行？）。');
     }
-  }, [t]);
+  }, []);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  async function save(event: FormEvent) {
-    event.preventDefault();
+  async function save() {
     setBusy(true);
     setMsg('');
     setErr('');
     try {
       const result = await saveTasksSettings({ data_dir: dataDir });
-      setMsg(result.restartRequired ? t('settings.restartRequired') : t('settings.saved'));
+      setMsg(result.restartRequired ? '已保存。数据库位置改动将在重启 dsh web 后生效。' : '已保存。');
       await reload();
     } catch (cause) {
-      setErr(cause instanceof Error ? cause.message : t('settings.failed'));
+      setErr(cause instanceof Error ? cause.message : '保存失败');
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="dsh-tasks">
-      <form className="tk-settings" onSubmit={save}>
-        <header className="tk-settings-head">
-          <h2>{t('settings.title')}</h2>
-          <p>{t('settings.hint')}</p>
-        </header>
+    <section className="bundle-section">
+      <div className="bundle-section-head">
+        <h2>任务面板</h2>
+        <p>个人任务看板（任务 tab）的数据库存储位置；修改后需重启 dsh web 生效。</p>
+      </div>
 
-        {msg !== '' && (
-          <p className="tk-notice" role="status">
-            {msg}
-          </p>
-        )}
-        {err !== '' && <p className="tk-error">⚠ {err}</p>}
+      {msg !== '' && (
+        <p className="settings-notice" role="status">
+          {msg}
+        </p>
+      )}
+      {err !== '' && <p className="form-error">⚠ {err}</p>}
 
-        <label className="tk-field">
-          <span>{t('settings.dataDir')}</span>
-          <input className="tk-input" value={dataDir} onChange={event => setDataDir(event.target.value)} placeholder="~/.dsh/tasks/db" />
-        </label>
+      <label className="ps-row">
+        <span>数据库目录 dataDir</span>
+        <input value={dataDir} onChange={event => setDataDir(event.target.value)} placeholder="~/.dsh/tasks/db" />
+      </label>
 
-        {view !== null && (
-          <p className="tk-settings-meta">
-            {t('settings.settingsPath')} <code>{view.settingsPath}</code>
-          </p>
-        )}
+      {view !== null && (
+        <p className="settings-empty">
+          配置文件：<code>{view.settingsPath}</code>（备份整个数据目录即可迁移任务板）
+        </p>
+      )}
 
-        <div className="tk-dialog-foot">
-          <div className="tk-foot-right">
-            <button type="submit" className="tk-btn tk-btn-primary" disabled={busy || dataDir.trim() === ''}>
-              {busy ? '…' : t('settings.save')}
-            </button>
-          </div>
-        </div>
-      </form>
-    </div>
+      <div className="ps-actions">
+        <button type="button" className="button primary" disabled={busy || dataDir.trim() === ''} onClick={() => void save()}>
+          {busy ? '保存中…' : '保存'}
+        </button>
+      </div>
+    </section>
   );
 }

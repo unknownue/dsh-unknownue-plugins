@@ -178,7 +178,7 @@ priority, due date, archive/restore/delete).
   but driven through PGlite's native query API (no pgwire socket, no
   postgres.js). The database location is **user-configurable**: defaults to
   `<dsh home>/tasks/db`, overridable in `cordis.patch.yml` (row `tasks`,
-  key `dataDir`) and in **DSH Settings → 任务面板**, persisted to
+  key `dataDir`) and in **DSH Settings → UnPlugin → 任务面板**, persisted to
   `<dsh home>/tasks/settings.json`. Changing the location while running is
   saved but flagged `restartRequired` — it takes effect on the next
   `dsh web` restart.
@@ -307,7 +307,8 @@ seeds the settings form's initial values. `''` paths mean the default
 ### Tasks
 
 User-facing configuration lives in the DSH Settings UI under the
-**任务面板** section and is persisted to `<dsh home>/tasks/settings.json`; the
+**UnPlugin** section's **任务面板** area and is persisted to
+`<dsh home>/tasks/settings.json`; the
 row config below only seeds the settings form's initial value. `''` paths mean
 the default (`<dsh home>/tasks/…`); `DSH_HOME` relocates `<dsh home>`. The
 board auto-boots with defaults (no `configured` gate); a `dataDir` change is

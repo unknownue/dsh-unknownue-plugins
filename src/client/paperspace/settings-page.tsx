@@ -13,6 +13,7 @@
  */
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { settingsUrl } from './api';
+import TasksSettingsSection from '../tasks/settings-page';
 
 export interface PaperspaceSettingsFile {
   version: number;
@@ -251,6 +252,8 @@ export default function UnknownueSettingsPage() {
             </button>
           </div>
         </section>
+
+        <TasksSettingsSection />
       </form>
     </div>
   );

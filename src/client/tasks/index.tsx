@@ -1,18 +1,17 @@
 /**
  * Task-board client half: registers the 任务 tab in conversation.view
- * (between 文件 and 论文) and its own 任务面板 settings section. Personal,
- * user-maintained — no agent-facing surface.
+ * (between 文件 and 论文). Personal, user-maintained — no agent-facing
+ * surface. Settings live in the UnPlugin settings page (paperspace owns the
+ * page; the task-board section is rendered there).
  */
 import React from 'react';
 import TasksView, { type TasksLocale } from './view';
-import TasksSettings from './settings-page';
 import stylesCss from './styles.css';
 
 const NS = 'dsh-unknownue-plugins.tasks';
 
 const zh: Record<string, string> = {
   'view.label': '任务',
-  'settings.label': '任务面板',
   'mode.board': '看板',
   'mode.list': '列表',
   'board.new': '新建任务',
@@ -48,20 +47,10 @@ const zh: Record<string, string> = {
   'editor.restore': '恢复',
   'editor.delete': '删除',
   'editor.deleteConfirm': '确定永久删除该任务？此操作不可撤销。',
-  'settings.title': '任务面板设置',
-  'settings.hint': '个人任务看板的存储位置。数据库目录修改后需重启 dsh web 生效。',
-  'settings.dataDir': '数据库目录 dataDir',
-  'settings.settingsPath': '配置文件：',
-  'settings.save': '保存',
-  'settings.saved': '已保存。',
-  'settings.restartRequired': '已保存。数据库位置改动将在重启 dsh web 后生效。',
-  'settings.failed': '保存失败',
-  'settings.loadFailed': '无法访问任务面板 host 路由（插件 host 未运行？）。',
 };
 
 const en: Record<string, string> = {
   'view.label': 'Tasks',
-  'settings.label': 'Task board',
   'mode.board': 'Board',
   'mode.list': 'List',
   'board.new': 'New task',
@@ -97,15 +86,6 @@ const en: Record<string, string> = {
   'editor.restore': 'Restore',
   'editor.delete': 'Delete',
   'editor.deleteConfirm': 'Permanently delete this task? This cannot be undone.',
-  'settings.title': 'Task board settings',
-  'settings.hint': 'Storage location of your personal task board. Changing the database directory takes effect after a dsh web restart.',
-  'settings.dataDir': 'Database directory (dataDir)',
-  'settings.settingsPath': 'Settings file:',
-  'settings.save': 'Save',
-  'settings.saved': 'Saved.',
-  'settings.restartRequired': 'Saved. The database location change takes effect after restarting dsh web.',
-  'settings.failed': 'Save failed',
-  'settings.loadFailed': 'Cannot reach the task board host routes (is the plugin host running?).',
 };
 
 function ensureStyles(): void {
@@ -134,20 +114,6 @@ export function applyTasksTab(ctx: any): void {
         registrant: 'dsh-unknownue-plugins',
       },
       () => React.createElement(TasksView, { t }),
-    ),
-  );
-
-  ctx.slots.inject('settings.section', () =>
-    ctx.slots.register(
-      {
-        name: 'settings.section',
-        id: 'dsh-unknownue-plugins/tasks-settings',
-        order: 46,
-        label: () => t('settings.label'),
-        locale: NS,
-        registrant: 'dsh-unknownue-plugins',
-      },
-      () => React.createElement(TasksSettings, { t }),
     ),
   );
 }
