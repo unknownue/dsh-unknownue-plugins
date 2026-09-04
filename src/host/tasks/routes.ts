@@ -42,7 +42,17 @@ export const TASKS_API = '/dsh-unknownue-plugins/tasks/api';
 
 const statusSchema = z.enum(['todo', 'in_progress', 'blocked', 'done']);
 const prioritySchema = z.enum(['low', 'medium', 'high']);
-const dueSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'due_at must be YYYY-MM-DD').nullable();
+/** Local wall time: all-day `YYYY-MM-DD` or minute-precise `YYYY-MM-DDTHH:mm`. */
+const dueTimeSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?$/, 'due time must be YYYY-MM-DD or YYYY-MM-DDTHH:mm');
+const dueSchema = z
+  .union([
+    z.object({ kind: z.literal('point'), at: dueTimeSchema }).strict(),
+    z
+      .object({ kind: z.literal('range'), start: dueTimeSchema, end: dueTimeSchema })
+      .strict()
+      .refine(value => value.start <= value.end, { message: 'range start must not be after end' }),
+  ])
+  .nullable();
 const todoSchema = z.object({
   id: z.string().uuid().optional(),
   content: z.string().trim().min(1).max(200),
@@ -56,7 +66,7 @@ const createSchema = z
     body: z.string().max(50000).optional(),
     status: statusSchema.optional(),
     priority: prioritySchema.optional(),
-    due_at: dueSchema.optional(),
+    due: dueSchema.optional(),
     todos: todosSchema.optional(),
   })
   .strict();
@@ -67,7 +77,7 @@ const updateSchema = z
     body: z.string().max(50000).optional(),
     status: statusSchema.optional(),
     priority: prioritySchema.optional(),
-    due_at: dueSchema.optional(),
+    due: dueSchema.optional(),
     todos: todosSchema.optional(),
   })
   .strict();
@@ -154,7 +164,7 @@ export function registerRoutes(webServer: WebServer, host: TasksHost): void {
               body: input.body,
               status: input.status as TaskStatus | undefined,
               priority: input.priority as TaskPriority | undefined,
-              dueAt: input.due_at,
+              due: input.due,
               todos: input.todos,
             });
             return json(res, 200, { card });
@@ -171,7 +181,7 @@ export function registerRoutes(webServer: WebServer, host: TasksHost): void {
                 body: input.body,
                 status: input.status as TaskStatus | undefined,
                 priority: input.priority as TaskPriority | undefined,
-                dueAt: input.due_at,
+                due: input.due,
                 todos: input.todos,
               });
               return json(res, 200, { card });

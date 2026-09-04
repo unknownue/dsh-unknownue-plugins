@@ -360,6 +360,17 @@
   gap: 10px;
 }
 
+/* due boundary: date input + optional time input side by side */
+.dsh-tasks .tk-due-inputs {
+  display: flex;
+  gap: 8px;
+}
+
+.dsh-tasks .tk-due-inputs .tk-input {
+  flex: 1;
+  min-width: 0;
+}
+
 .dsh-tasks .tk-input,
 .dsh-tasks .tk-textarea {
   box-sizing: border-box;

@@ -9,6 +9,8 @@
  *     validation errors, 404s, 405s, loopback fence
  *   - subtask checklist: create/patch roundtrip, id minting, whole-list
  *     replacement, validation (blank/51 items/non-boolean/non-uuid)
+ *   - due date: optional single moment or time range (all-day or HH:mm),
+ *     point↔range switching, clearing, inverted-range/format validation
  *   - fractional ranking (insert before/after neighbours)
  *   - settings: defaults, persistence, restartRequired flag, schema
  *   - dispose → data persists across a fresh runtime (reopen)
@@ -128,11 +130,11 @@ async function main() {
   // ── create ────────────────────────────────────────────────────────────────
   const a = await call(api, 'POST', `${TASKS_API}/cards`, { title: '写周报' });
   const cardA = a.body.card as Record<string, any>;
-  check('create with defaults', a.status === 200 && cardA.title === '写周报' && cardA.status === 'todo' && cardA.priority === 'medium' && cardA.rank === 1024 && cardA.dueAt === null && cardA.body === '' && cardA.completedAt === null, JSON.stringify(a.body));
+  check('create with defaults', a.status === 200 && cardA.title === '写周报' && cardA.status === 'todo' && cardA.priority === 'medium' && cardA.rank === 1024 && cardA.due === null && cardA.body === '' && cardA.completedAt === null, JSON.stringify(a.body));
 
-  const b = await call(api, 'POST', `${TASKS_API}/cards`, { title: '修登录 bug', status: 'done', priority: 'high', due_at: '2026-09-10', body: '复现步骤见文档' });
+  const b = await call(api, 'POST', `${TASKS_API}/cards`, { title: '修登录 bug', status: 'done', priority: 'high', due: { kind: 'point', at: '2026-09-10' }, body: '复现步骤见文档' });
   const cardB = b.body.card as Record<string, any>;
-  check('create with all fields', b.status === 200 && cardB.status === 'done' && cardB.priority === 'high' && cardB.dueAt === '2026-09-10' && typeof cardB.completedAt === 'number', JSON.stringify(b.body));
+  check('create with all fields', b.status === 200 && cardB.status === 'done' && cardB.priority === 'high' && cardB.due !== null && cardB.due.kind === 'point' && cardB.due.at === '2026-09-10' && typeof cardB.completedAt === 'number', JSON.stringify(b.body));
 
   const badTitle = await call(api, 'POST', `${TASKS_API}/cards`, { title: '' });
   check('empty title → 400 VALIDATION_ERROR', badTitle.status === 400 && badTitle.body.code === 'VALIDATION_ERROR');
@@ -212,6 +214,59 @@ async function main() {
   const badId = await call(api, 'PATCH', `${TASKS_API}/cards/${todoCard.id}`, { todos: [{ id: 'not-a-uuid', content: 'x', done: false }] });
   check('non-uuid id → 400', badId.status === 400 && badId.body.code === 'VALIDATION_ERROR');
 
+  // ── due date (optional: single moment or time range) ─────────────────────
+  const pointTime = await call(api, 'POST', `${TASKS_API}/cards`, { title: '单点带时间', due: { kind: 'point', at: '2026-09-10T18:30' } });
+  const pointTimeCard = pointTime.body.card as Record<string, any>;
+  check(
+    'point due with time roundtrips',
+    pointTime.status === 200 && pointTimeCard.due !== null && pointTimeCard.due.kind === 'point' && pointTimeCard.due.at === '2026-09-10T18:30',
+    JSON.stringify(pointTimeCard.due),
+  );
+
+  const range = await call(api, 'POST', `${TASKS_API}/cards`, {
+    title: '范围任务',
+    due: { kind: 'range', start: '2026-09-10', end: '2026-09-12T18:00' },
+  });
+  const rangeCard = range.body.card as Record<string, any>;
+  check(
+    'range due roundtrips',
+    range.status === 200 && rangeCard.due !== null && rangeCard.due.kind === 'range' && rangeCard.due.start === '2026-09-10' && rangeCard.due.end === '2026-09-12T18:00',
+    JSON.stringify(rangeCard.due),
+  );
+
+  const inverted = await call(api, 'POST', `${TASKS_API}/cards`, { title: '倒挂', due: { kind: 'range', start: '2026-09-12', end: '2026-09-10' } });
+  check('range start after end → 400', inverted.status === 400 && inverted.body.code === 'VALIDATION_ERROR');
+
+  const badDueFormat = await call(api, 'POST', `${TASKS_API}/cards`, { title: '坏格式', due: { kind: 'point', at: '2026/09/10' } });
+  check('bad due format → 400', badDueFormat.status === 400 && badDueFormat.body.code === 'VALIDATION_ERROR');
+
+  const badDueKind = await call(api, 'POST', `${TASKS_API}/cards`, { title: '坏模式', due: { kind: 'bogus', at: '2026-09-10' } });
+  check('unknown due kind → 400', badDueKind.status === 400 && badDueKind.body.code === 'VALIDATION_ERROR');
+
+  const patchDue = await call(api, 'PATCH', `${TASKS_API}/cards/${cardB.id}`, { due: { kind: 'range', start: '2026-09-11T09:00', end: '2026-09-13' } });
+  const patchDueCard = patchDue.body.card as Record<string, any>;
+  check(
+    'patch switches point → range',
+    patchDue.status === 200 && patchDueCard.due !== null && patchDueCard.due.kind === 'range' && patchDueCard.due.start === '2026-09-11T09:00' && patchDueCard.due.end === '2026-09-13',
+    JSON.stringify(patchDueCard.due),
+  );
+
+  const patchKeepDue = await call(api, 'PATCH', `${TASKS_API}/cards/${cardB.id}`, { title: '不动截止' });
+  const patchKeepCard = patchKeepDue.body.card as Record<string, any>;
+  check(
+    'patch without due keeps it',
+    patchKeepCard.due !== null && patchKeepCard.due.kind === 'range' && patchKeepCard.due.end === '2026-09-13',
+    JSON.stringify(patchKeepCard.due),
+  );
+
+  const dueCleared = await call(api, 'PATCH', `${TASKS_API}/cards/${cardB.id}`, { due: null });
+  const dueClearedCard = dueCleared.body.card as Record<string, any>;
+  check('patch due: null clears both columns', dueCleared.status === 200 && dueClearedCard.due === null, JSON.stringify(dueClearedCard.due));
+
+  const pointAgain = await call(api, 'PATCH', `${TASKS_API}/cards/${cardB.id}`, { due: { kind: 'point', at: '2026-09-20' } });
+  const pointAgainCard = pointAgain.body.card as Record<string, any>;
+  check('range → point clears due_until', pointAgain.status === 200 && pointAgainCard.due !== null && pointAgainCard.due.kind === 'point' && pointAgainCard.due.at === '2026-09-20', JSON.stringify(pointAgainCard.due));
+
   // ── move + fractional ranking ─────────────────────────────────────────────
   const moved = await call(api, 'POST', `${TASKS_API}/cards/${cardA.id}/move`, { status: 'in_progress' });
   const cardA3 = moved.body.card as Record<string, any>;
@@ -277,6 +332,7 @@ async function main() {
   const before = await call(api, 'GET', `${TASKS_API}/board`);
   const persistedCard = await call(api, 'POST', `${TASKS_API}/cards`, {
     title: '重启后还在',
+    due: { kind: 'range', start: '2026-09-10T10:00', end: '2026-09-11' },
     todos: [{ content: '跨重启子任务', done: true }],
   });
   const persistedId = (persistedCard.body.card as Record<string, any>).id;
@@ -298,6 +354,11 @@ async function main() {
     'subtasks survive dispose + reopen',
     reopenedCard !== undefined && Array.isArray(reopenedCard.todos) && reopenedCard.todos.length === 1 && reopenedCard.todos[0].content === '跨重启子任务' && reopenedCard.todos[0].done === true,
     JSON.stringify(reopenedCard?.todos),
+  );
+  check(
+    'due range survives dispose + reopen',
+    reopenedCard !== undefined && reopenedCard.due !== null && reopenedCard.due.kind === 'range' && reopenedCard.due.start === '2026-09-10T10:00' && reopenedCard.due.end === '2026-09-11',
+    JSON.stringify(reopenedCard?.due),
   );
   check('revision continues across reopen', reopened.body.revision === before.body.revision + 1, JSON.stringify({ before: before.body.revision, reopened: reopened.body.revision }));
 

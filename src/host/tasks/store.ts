@@ -8,7 +8,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { TasksRuntime } from './db';
-import type { TaskCard, TaskPriority, TaskStatus, TaskTodo } from './types';
+import type { TaskCard, TaskDue, TaskPriority, TaskStatus, TaskTodo } from './types';
 
 interface TaskRow {
   id: string;
@@ -17,6 +17,7 @@ interface TaskRow {
   status: string;
   priority: string;
   due_at: string | null;
+  due_until: string | null;
   rank: number;
   archived: number;
   created_at: number;
@@ -27,7 +28,7 @@ interface TaskRow {
 
 const RANK_STEP = 1024;
 
-const COLUMNS = 'id, title, body, status, priority, due_at, rank, archived, created_at, updated_at, completed_at, todos';
+const COLUMNS = 'id, title, body, status, priority, due_at, due_until, rank, archived, created_at, updated_at, completed_at, todos';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -66,6 +67,23 @@ export function normalizeTodos(items: readonly TodoInput[]): TaskTodo[] {
   }));
 }
 
+/** Flatten the wire due union onto the two columns (null → both null). */
+function flattenDue(due: TaskDue | null): { due_at: string | null; due_until: string | null } {
+  if (due === null) return { due_at: null, due_until: null };
+  return due.kind === 'point'
+    ? { due_at: due.at, due_until: null }
+    : { due_at: due.start, due_until: due.end };
+}
+
+/** Rebuild the union from the columns; the durable boundary validates shape. */
+function dueOf(row: TaskRow): TaskDue | null {
+  if (typeof row.due_at !== 'string' || row.due_at === '') return null;
+  if (typeof row.due_until === 'string' && row.due_until !== '') {
+    return { kind: 'range', start: row.due_at, end: row.due_until };
+  }
+  return { kind: 'point', at: row.due_at };
+}
+
 function toCard(row: TaskRow): TaskCard {
   return {
     id: row.id,
@@ -73,7 +91,7 @@ function toCard(row: TaskRow): TaskCard {
     body: row.body,
     status: row.status as TaskStatus,
     priority: row.priority as TaskPriority,
-    dueAt: row.due_at,
+    due: dueOf(row),
     rank: row.rank,
     archived: row.archived === 1,
     todos: parseTodos(row.todos),
@@ -128,7 +146,7 @@ export interface CreateCardInput {
   body?: string;
   status?: TaskStatus;
   priority?: TaskPriority;
-  dueAt?: string | null;
+  due?: TaskDue | null;
   todos?: TodoInput[];
 }
 
@@ -139,10 +157,11 @@ export async function createCard(runtime: TasksRuntime, input: CreateCardInput):
   const id = randomUUID();
   const completedAt = status === 'done' ? now : null;
   const todos = input.todos !== undefined ? JSON.stringify(normalizeTodos(input.todos)) : '[]';
+  const due = flattenDue(input.due ?? null);
   await runtime.query(
-    `INSERT INTO tasks (id, title, body, status, priority, due_at, rank, created_at, updated_at, completed_at, todos)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9, $10)`,
-    [id, input.title, input.body ?? '', status, input.priority ?? 'medium', input.dueAt ?? null, rank, now, completedAt, todos],
+    `INSERT INTO tasks (id, title, body, status, priority, due_at, due_until, rank, created_at, updated_at, completed_at, todos)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10, $11)`,
+    [id, input.title, input.body ?? '', status, input.priority ?? 'medium', due.due_at, due.due_until, rank, now, completedAt, todos],
   );
   await bumpRevision(runtime);
   const card = await findCard(runtime, id);
@@ -155,7 +174,8 @@ export interface UpdateCardPatch {
   body?: string;
   status?: TaskStatus;
   priority?: TaskPriority;
-  dueAt?: string | null;
+  /** Absent → keep; null → clear; value → set (single moment or range). */
+  due?: TaskDue | null;
   /** Whole-checklist replacement; absent → keep the current list. */
   todos?: TodoInput[];
 }
@@ -178,15 +198,23 @@ export async function updateCard(runtime: TasksRuntime, id: string, patch: Updat
   }
 
   const todos = patch.todos !== undefined ? JSON.stringify(normalizeTodos(patch.todos)) : null;
+  // Due needs a flag pair (not COALESCE): switching range → point must be able
+  // to write NULL into due_until, and clearing writes NULL into both.
+  const keepDue = patch.due === undefined;
+  const due = flattenDue(patch.due ?? null);
   await runtime.query(
-    `UPDATE tasks SET title = $2, body = $3, priority = $4, due_at = $5, status = $6, rank = $7,
-       completed_at = $8, updated_at = $9, todos = COALESCE($10, todos) WHERE id = $1`,
+    `UPDATE tasks SET title = $2, body = $3, priority = $4, due_at = CASE WHEN $5 THEN due_at ELSE $6 END,
+       due_until = CASE WHEN $7 THEN due_until ELSE $8 END, status = $9, rank = $10,
+       completed_at = $11, updated_at = $12, todos = COALESCE($13, todos) WHERE id = $1`,
     [
       id,
       patch.title ?? current.title,
       patch.body ?? current.body,
       patch.priority ?? current.priority,
-      patch.dueAt !== undefined ? patch.dueAt : current.due_at,
+      keepDue,
+      due.due_at,
+      keepDue,
+      due.due_until,
       status,
       rank,
       completedAt,

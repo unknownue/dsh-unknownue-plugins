@@ -12,6 +12,7 @@ import React from 'react';
 import {
   TASK_STATUSES,
   type TaskCard,
+  type TaskDue,
   type TaskPriority,
   type TaskStatus,
   type TaskTodo,
@@ -36,12 +37,57 @@ const POLL_MS = 5000;
 /** Checklist items shown directly on a board card before folding into +n. */
 const CARD_TODO_PREVIEW = 3;
 
+type DueMode = 'none' | 'point' | 'range';
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Local wall-time "now" at minute precision, matching the due string format. */
+function localNowMinute(): string {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+
+function dueModeOf(due: TaskDue | null): DueMode {
+  if (due === null) return 'none';
+  return due.kind;
+}
+
+/** Split `YYYY-MM-DD[THH:mm]` into its date and optional time parts. */
+function splitDueTime(value: string): { date: string; time: string } {
+  const separator = value.indexOf('T');
+  return separator === -1 ? { date: value, time: '' } : { date: value.slice(0, separator), time: value.slice(separator + 1) };
+}
+
+function joinDueTime(date: string, time: string): string {
+  return time === '' ? date : `${date}T${time}`;
+}
+
+/** Compact display label: `09-10 18:00` / `09-10 14:00 ~ 09-12`. */
+function formatDueLabel(due: TaskDue): string {
+  if (due.kind === 'point') return due.at.replace('T', ' ');
+  return `${due.start.replace('T', ' ')} ~ ${due.end.replace('T', ' ')}`;
+}
+
+/** The moment a card is late: the deadline itself, or the range end. */
+function dueDeadline(due: TaskDue): string {
+  return due.kind === 'point' ? due.at : due.end;
+}
+
+/** All-day dates go overdue after the day; timed values after the minute. */
 function isOverdue(card: TaskCard): boolean {
-  return card.dueAt !== null && card.status !== 'done' && card.dueAt < todayIso();
+  if (card.due === null || card.status === 'done') return false;
+  const deadline = dueDeadline(card.due);
+  return deadline.length === 10 ? deadline < todayIso() : deadline < localNowMinute();
+}
+
+/** True when the draft due has a cleared date or an inverted range. */
+function dueInvalid(due: TaskDue | null): boolean {
+  if (due === null) return false;
+  if (due.kind === 'point') return splitDueTime(due.at).date === '';
+  return splitDueTime(due.start).date === '' || splitDueTime(due.end).date === '' || due.start > due.end;
 }
 
 function formatUpdated(ms: number): string {
@@ -214,7 +260,9 @@ export default function TasksView({ t }: TasksViewProps) {
                       )}
                       <div className="tk-card-meta">
                         <span className={`tk-prio tk-prio-${card.priority}`}>{t(`priority.${card.priority}`)}</span>
-                        {card.dueAt !== null && <span className={isOverdue(card) ? 'tk-due tk-due-over' : 'tk-due'}>{card.dueAt}</span>}
+                        {card.due !== null && (
+                          <span className={isOverdue(card) ? 'tk-due tk-due-over' : 'tk-due'}>{formatDueLabel(card.due)}</span>
+                        )}
                         {card.todos.length > 0 && (
                           <span className="tk-todo-count">
                             {todoDoneCount(card)}/{card.todos.length}
@@ -251,7 +299,7 @@ export default function TasksView({ t }: TasksViewProps) {
                   </td>
                   <td>{t(`status.${card.status}`)}</td>
                   <td>{t(`priority.${card.priority}`)}</td>
-                  <td className={isOverdue(card) ? 'tk-due-over' : undefined}>{card.dueAt ?? '—'}</td>
+                  <td className={isOverdue(card) ? 'tk-due-over' : undefined}>{card.due === null ? '—' : formatDueLabel(card.due)}</td>
                   <td className="tk-cell-muted">{formatUpdated(card.updatedAt)}</td>
                   <td>
                     <button
@@ -316,10 +364,24 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
   const [body, setBody] = useState(existing?.body ?? '');
   const [status, setStatus] = useState<TaskStatus>(existing?.status ?? 'todo');
   const [priority, setPriority] = useState<TaskPriority>(existing?.priority ?? 'medium');
-  const [due, setDue] = useState(existing?.dueAt ?? '');
+  const [due, setDue] = useState<TaskDue | null>(existing?.due ?? null);
   const [todos, setTodos] = useState<TaskTodo[]>(existing?.todos.map(item => ({ ...item })) ?? []);
   const [newTodo, setNewTodo] = useState('');
   const [busy, setBusy] = useState(false);
+
+  function setDueMode(next: DueMode) {
+    if (next === 'none') {
+      setDue(null);
+    } else if (next === 'point') {
+      setDue(due === null ? { kind: 'point', at: todayIso() } : { kind: 'point', at: due.kind === 'range' ? due.start : due.at });
+    } else {
+      setDue(
+        due !== null && due.kind === 'range'
+          ? due
+          : { kind: 'range', start: due !== null && due.kind === 'point' ? due.at : todayIso(), end: todayIso() },
+      );
+    }
+  }
 
   function addTodo() {
     const content = newTodo.trim();
@@ -342,12 +404,12 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
 
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (title.trim() === '') return;
+    if (title.trim() === '' || dueInvalid(due)) return;
     setBusy(true);
     try {
       // Draft items carry an empty id; the host mints ids for them.
       const payloadTodos = todos.map(({ id, content, done }) => (id === '' ? { content, done } : { id, content, done }));
-      const payload = { title: title.trim(), body, status, priority, due_at: due === '' ? null : due, todos: payloadTodos };
+      const payload = { title: title.trim(), body, status, priority, due, todos: payloadTodos };
       if (existing === null) await createCard(payload);
       else await updateCard(existing.id, payload);
       await onSaved(existing?.archived === true);
@@ -430,9 +492,36 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
           </label>
           <label className="tk-field">
             <span>{t('editor.due')}</span>
-            <input className="tk-input" type="date" value={due} onChange={event => setDue(event.target.value)} />
+            <select className="tk-input" value={dueModeOf(due)} onChange={event => setDueMode(event.target.value as DueMode)}>
+              <option value="none">{t('due.none')}</option>
+              <option value="point">{t('due.point')}</option>
+              <option value="range">{t('due.range')}</option>
+            </select>
           </label>
         </div>
+
+        {due !== null && due.kind === 'point' && (
+          <DueTimeRow
+            label={t('due.at')}
+            value={due.at}
+            onChange={next => setDue({ kind: 'point', at: next })}
+          />
+        )}
+        {due !== null && due.kind === 'range' && (
+          <div className="tk-field-row">
+            <DueTimeRow
+              label={t('due.start')}
+              value={due.start}
+              onChange={next => setDue({ kind: 'range', start: next, end: due.end })}
+            />
+            <DueTimeRow
+              label={t('due.end')}
+              value={due.end}
+              onChange={next => setDue({ kind: 'range', start: due.start, end: next })}
+            />
+          </div>
+        )}
+        {dueInvalid(due) && <p className="tk-error">{t('due.invalid')}</p>}
 
         <div className="tk-field">
           <span>
@@ -496,12 +585,40 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
             <button type="button" className="tk-btn" disabled={busy} onClick={onClose}>
               {t('editor.cancel')}
             </button>
-            <button type="submit" className="tk-btn tk-btn-primary" disabled={busy || title.trim() === ''}>
+            <button type="submit" className="tk-btn tk-btn-primary" disabled={busy || title.trim() === '' || dueInvalid(due)}>
               {busy ? '…' : t('editor.save')}
             </button>
           </div>
         </footer>
       </form>
+    </div>
+  );
+}
+
+// ── due time row (date + optional time) ──────────────────────────────────────
+
+interface DueTimeRowProps {
+  label: string;
+  value: string;
+  onChange(next: string): void;
+}
+
+/** One boundary of a due date: a date input plus an OPTIONAL time input. */
+function DueTimeRow({ label, value, onChange }: DueTimeRowProps) {
+  const { date, time } = splitDueTime(value);
+  return (
+    <div className="tk-field">
+      <span>{label}</span>
+      <div className="tk-due-inputs">
+        <input
+          className="tk-input"
+          type="date"
+          value={date}
+          aria-label={label}
+          onChange={event => onChange(joinDueTime(event.target.value, time))}
+        />
+        <input className="tk-input" type="time" value={time} onChange={event => onChange(joinDueTime(date, event.target.value))} />
+      </div>
     </div>
   );
 }

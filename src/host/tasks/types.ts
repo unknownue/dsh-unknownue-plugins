@@ -23,6 +23,15 @@ export interface TaskTodo {
   done: boolean;
 }
 
+/**
+ * Optional due date: either a single deadline moment or a task time range.
+ * Time strings are local wall time: `YYYY-MM-DD` (all-day) or
+ * `YYYY-MM-DDTHH:mm`.
+ */
+export type TaskDue =
+  | { kind: 'point'; at: string }
+  | { kind: 'range'; start: string; end: string };
+
 /** Public card DTO (camelCase; the wire API uses snake_case, paperspace-style). */
 export interface TaskCard {
   id: string;
@@ -30,8 +39,8 @@ export interface TaskCard {
   body: string;
   status: TaskStatus;
   priority: TaskPriority;
-  /** `YYYY-MM-DD` or null. */
-  dueAt: string | null;
+  /** Optional due date (single moment or range); null when unset. */
+  due: TaskDue | null;
   /** Fractional rank inside its status column (larger = further down). */
   rank: number;
   archived: boolean;

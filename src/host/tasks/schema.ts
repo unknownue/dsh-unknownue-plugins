@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   status       TEXT NOT NULL DEFAULT 'todo',
   priority     TEXT NOT NULL DEFAULT 'medium',
   due_at       TEXT,
+  due_until    TEXT,
   rank         REAL NOT NULL DEFAULT 1024,
   archived     INTEGER NOT NULL DEFAULT 0,
   created_at   BIGINT NOT NULL,
@@ -27,10 +28,11 @@ CREATE TABLE IF NOT EXISTS tasks (
   todos        TEXT NOT NULL DEFAULT '[]'
 );
 
--- Subtasks column for databases booted before the feature landed:
+-- Columns for databases booted before the features landed:
 -- CREATE TABLE IF NOT EXISTS does not touch an existing table, so the
--- idempotent ALTER covers every already-booted board.
+-- idempotent ALTERs cover every already-booted board.
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS todos TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_until TEXT;
 
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,

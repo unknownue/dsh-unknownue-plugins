@@ -24,13 +24,19 @@ export interface TaskTodoInput {
   done: boolean;
 }
 
+/**
+ * Optional due date: a single deadline moment or a task time range.
+ * Local wall time: `YYYY-MM-DD` (all-day) or `YYYY-MM-DDTHH:mm`.
+ */
+export type TaskDue = { kind: 'point'; at: string } | { kind: 'range'; start: string; end: string };
+
 export interface TaskCard {
   id: string;
   title: string;
   body: string;
   status: TaskStatus;
   priority: TaskPriority;
-  dueAt: string | null;
+  due: TaskDue | null;
   rank: number;
   archived: boolean;
   todos: TaskTodo[];
@@ -82,7 +88,7 @@ export function createCard(input: {
   body?: string;
   status?: TaskStatus;
   priority?: TaskPriority;
-  due_at?: string | null;
+  due?: TaskDue | null;
   todos?: TaskTodoInput[];
 }): Promise<{ card: TaskCard }> {
   return request<{ card: TaskCard }>('/cards', { method: 'POST', body: JSON.stringify(input) });
@@ -95,7 +101,7 @@ export function updateCard(
     body?: string;
     status?: TaskStatus;
     priority?: TaskPriority;
-    due_at?: string | null;
+    due?: TaskDue | null;
     todos?: TaskTodoInput[];
   },
 ): Promise<{ card: TaskCard }> {

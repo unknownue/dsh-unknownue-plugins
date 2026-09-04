@@ -172,7 +172,7 @@ maintains entirely by hand — there is **no agent surface** (no model-facing
 tools, no session-log events, no dispatch). Four kanban columns (待办 /
 进行中 / 阻塞 / 完成) with drag-and-drop between columns, a dense list view
 (including archived cards), and a card editor (title, Markdown body, status,
-priority, due date, archive/restore/delete).
+priority, optional due date, archive/restore/delete).
 
 - **PGlite database** — the same in-process PostgreSQL used by paperspace,
   but driven through PGlite's native query API (no pgwire socket, no
@@ -187,6 +187,13 @@ priority, due date, archive/restore/delete).
 - **Fractional ranking** — cards carry a `rank` (midpoint between neighbours);
   a drag/reorder writes exactly one row and concurrent edits cannot scramble
   a column.
+- **Optional due date, two modes** — unset (无), a single deadline moment
+  (单点: all-day `YYYY-MM-DD` or minute-precise `YYYY-MM-DDTHH:mm`), or a
+  task time range (范围: start ~ end, each all-day or timed). Local wall
+  time; overdue marks the deadline / range end. Stored as `due_at` +
+  `due_until` columns (point = `due_at` only); databases from before the
+  feature auto-migrate via `ALTER TABLE ... IF NOT EXISTS`, and legacy
+  date-only values read as single-moment due dates.
 - **Subtasks** — each card optionally carries up to 50 checkable subtasks
   (structured `{ id, content, done }`, ids minted host-side). The board card
   shows the checklist (first 3 items + `+n`) with direct checkboxes and a
