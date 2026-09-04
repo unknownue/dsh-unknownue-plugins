@@ -52,6 +52,7 @@ const zh: Record<string, string> = {
   'todos.addPlaceholder': '新增子任务，回车或点「添加」',
   'todos.add': '添加',
   'todos.toggle': '勾选子任务',
+  'todos.edit': '编辑子任务',
   'todos.remove': '删除子任务',
 };
 
@@ -97,6 +98,7 @@ const en: Record<string, string> = {
   'todos.addPlaceholder': 'Add a subtask, then press Enter or click Add',
   'todos.add': 'Add',
   'todos.toggle': 'Toggle subtask',
+  'todos.edit': 'Edit subtask',
   'todos.remove': 'Remove subtask',
 };
 

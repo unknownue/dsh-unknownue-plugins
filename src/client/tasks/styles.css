@@ -489,6 +489,22 @@
   flex: 1;
 }
 
+/* inline-editable subtask content (editor rows) */
+.dsh-tasks .tk-todo-row .tk-todo-input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.dsh-tasks .tk-todo-row .tk-todo-input:hover,
+.dsh-tasks .tk-todo-row .tk-todo-input:focus {
+  border-color: var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
 .dsh-tasks .tk-todo-remove {
   flex: none;
   border: none;

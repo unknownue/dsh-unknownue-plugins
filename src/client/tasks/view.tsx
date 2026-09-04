@@ -332,6 +332,10 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
     setTodos(todos.map((item, i) => (i === index ? { ...item, done: !item.done } : item)));
   }
 
+  function editDraftTodo(index: number, content: string) {
+    setTodos(todos.map((item, i) => (i === index ? { ...item, content } : item)));
+  }
+
   function removeDraftTodo(index: number) {
     setTodos(todos.filter((_, i) => i !== index));
   }
@@ -441,7 +445,13 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
                 <label className="tk-todo-check">
                   <input type="checkbox" checked={item.done} aria-label={t('todos.toggle')} onChange={() => toggleDraftTodo(index)} />
                 </label>
-                <span className="tk-todo-content">{item.content}</span>
+                <input
+                  className="tk-input tk-todo-input"
+                  value={item.content}
+                  maxLength={200}
+                  aria-label={t('todos.edit')}
+                  onChange={event => editDraftTodo(index, event.target.value)}
+                />
                 <button type="button" className="tk-todo-remove" aria-label={t('todos.remove')} onClick={() => removeDraftTodo(index)}>
                   ✕
                 </button>
