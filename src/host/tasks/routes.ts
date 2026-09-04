@@ -43,6 +43,12 @@ export const TASKS_API = '/dsh-unknownue-plugins/tasks/api';
 const statusSchema = z.enum(['todo', 'in_progress', 'blocked', 'done']);
 const prioritySchema = z.enum(['low', 'medium', 'high']);
 const dueSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'due_at must be YYYY-MM-DD').nullable();
+const todoSchema = z.object({
+  id: z.string().uuid().optional(),
+  content: z.string().trim().min(1).max(200),
+  done: z.boolean(),
+});
+const todosSchema = z.array(todoSchema).max(50);
 
 const createSchema = z
   .object({
@@ -51,6 +57,7 @@ const createSchema = z
     status: statusSchema.optional(),
     priority: prioritySchema.optional(),
     due_at: dueSchema.optional(),
+    todos: todosSchema.optional(),
   })
   .strict();
 
@@ -61,6 +68,7 @@ const updateSchema = z
     status: statusSchema.optional(),
     priority: prioritySchema.optional(),
     due_at: dueSchema.optional(),
+    todos: todosSchema.optional(),
   })
   .strict();
 
@@ -147,6 +155,7 @@ export function registerRoutes(webServer: WebServer, host: TasksHost): void {
               status: input.status as TaskStatus | undefined,
               priority: input.priority as TaskPriority | undefined,
               dueAt: input.due_at,
+              todos: input.todos,
             });
             return json(res, 200, { card });
           }
@@ -163,6 +172,7 @@ export function registerRoutes(webServer: WebServer, host: TasksHost): void {
                 status: input.status as TaskStatus | undefined,
                 priority: input.priority as TaskPriority | undefined,
                 dueAt: input.due_at,
+                todos: input.todos,
               });
               return json(res, 200, { card });
             }

@@ -10,6 +10,20 @@ export type TaskPriority = 'low' | 'medium' | 'high';
 
 export const TASK_STATUSES: readonly TaskStatus[] = ['todo', 'in_progress', 'blocked', 'done'];
 
+/** One checkable subtask (id may be '' for not-yet-created draft items). */
+export interface TaskTodo {
+  id: string;
+  content: string;
+  done: boolean;
+}
+
+/** Subtask as sent on the wire: id omitted for new items (host mints it). */
+export interface TaskTodoInput {
+  id?: string;
+  content: string;
+  done: boolean;
+}
+
 export interface TaskCard {
   id: string;
   title: string;
@@ -19,6 +33,7 @@ export interface TaskCard {
   dueAt: string | null;
   rank: number;
   archived: boolean;
+  todos: TaskTodo[];
   createdAt: number;
   updatedAt: number;
   completedAt: number | null;
@@ -68,13 +83,21 @@ export function createCard(input: {
   status?: TaskStatus;
   priority?: TaskPriority;
   due_at?: string | null;
+  todos?: TaskTodoInput[];
 }): Promise<{ card: TaskCard }> {
   return request<{ card: TaskCard }>('/cards', { method: 'POST', body: JSON.stringify(input) });
 }
 
 export function updateCard(
   id: string,
-  patch: { title?: string; body?: string; status?: TaskStatus; priority?: TaskPriority; due_at?: string | null },
+  patch: {
+    title?: string;
+    body?: string;
+    status?: TaskStatus;
+    priority?: TaskPriority;
+    due_at?: string | null;
+    todos?: TaskTodoInput[];
+  },
 ): Promise<{ card: TaskCard }> {
   return request<{ card: TaskCard }>(`/cards/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) });
 }

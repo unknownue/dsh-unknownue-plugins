@@ -23,8 +23,14 @@ CREATE TABLE IF NOT EXISTS tasks (
   archived     INTEGER NOT NULL DEFAULT 0,
   created_at   BIGINT NOT NULL,
   updated_at   BIGINT NOT NULL,
-  completed_at BIGINT
+  completed_at BIGINT,
+  todos        TEXT NOT NULL DEFAULT '[]'
 );
+
+-- Subtasks column for databases booted before the feature landed:
+-- CREATE TABLE IF NOT EXISTS does not touch an existing table, so the
+-- idempotent ALTER covers every already-booted board.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS todos TEXT NOT NULL DEFAULT '[]';
 
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,

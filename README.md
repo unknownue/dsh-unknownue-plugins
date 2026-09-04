@@ -187,6 +187,13 @@ priority, due date, archive/restore/delete).
 - **Fractional ranking** — cards carry a `rank` (midpoint between neighbours);
   a drag/reorder writes exactly one row and concurrent edits cannot scramble
   a column.
+- **Subtasks** — each card optionally carries up to 50 checkable subtasks
+  (structured `{ id, content, done }`, ids minted host-side). The board card
+  shows the checklist (first 3 items + `+n`) with direct checkboxes and a
+  `done/total` progress badge; the card editor edits the full list (toggle,
+  remove, add). PATCH `todos` is a whole-list replacement; omitting it keeps
+  the current list. Stored as a validated JSON column on `tasks`; databases
+  from before the feature auto-migrate via `ALTER TABLE ... IF NOT EXISTS`.
 - **Revision polling** — board state deliberately lives outside the DSH
   session log; the tab polls one integer (`meta.revision`, 5s) and refetches
   only when it moved, which also covers edits from another browser tab.
@@ -197,8 +204,9 @@ priority, due date, archive/restore/delete).
   `POST /cards/:id/restore`, `DELETE /cards/:id`, `GET|POST /settings`.
 
 Run `node lib/tasks/tasks.test.js` for the integration suite (real PGlite
-against a temp `DSH_HOME`: routes, validation, ranking, settings persistence,
-restartRequired flag, dispose → reopen persistence, in-memory boot).
+against a temp `DSH_HOME`: routes, validation, subtask checklist, ranking,
+settings persistence, restartRequired flag, dispose → reopen persistence,
+in-memory boot).
 
 ## Install
 

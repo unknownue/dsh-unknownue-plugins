@@ -8,7 +8,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { TasksRuntime } from './db';
-import type { TaskCard, TaskPriority, TaskStatus } from './types';
+import type { TaskCard, TaskPriority, TaskStatus, TaskTodo } from './types';
 
 interface TaskRow {
   id: string;
@@ -22,11 +22,49 @@ interface TaskRow {
   created_at: number;
   updated_at: number;
   completed_at: number | null;
+  todos: string;
 }
 
 const RANK_STEP = 1024;
 
-const COLUMNS = 'id, title, body, status, priority, due_at, rank, archived, created_at, updated_at, completed_at';
+const COLUMNS = 'id, title, body, status, priority, due_at, rank, archived, created_at, updated_at, completed_at, todos';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Parse the stored todos JSON; the durable boundary never trusts the column. */
+function parseTodos(text: string | null | undefined): TaskTodo[] {
+  if (typeof text !== 'string' || text === '') return [];
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap(item => {
+      if (item === null || typeof item !== 'object') return [];
+      const record = item as Record<string, unknown>;
+      if (typeof record.id !== 'string' || !UUID_PATTERN.test(record.id)) return [];
+      if (typeof record.content !== 'string' || record.content === '') return [];
+      if (typeof record.done !== 'boolean') return [];
+      return [{ id: record.id, content: record.content, done: record.done }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** One subtask as accepted from the wire (id absent → host mints it). */
+export interface TodoInput {
+  id?: string;
+  content: string;
+  done: boolean;
+}
+
+/** Trim contents and mint ids for items that came without one. */
+export function normalizeTodos(items: readonly TodoInput[]): TaskTodo[] {
+  return items.map(item => ({
+    id: typeof item.id === 'string' && UUID_PATTERN.test(item.id) ? item.id : randomUUID(),
+    content: item.content.trim(),
+    done: item.done,
+  }));
+}
 
 function toCard(row: TaskRow): TaskCard {
   return {
@@ -38,6 +76,7 @@ function toCard(row: TaskRow): TaskCard {
     dueAt: row.due_at,
     rank: row.rank,
     archived: row.archived === 1,
+    todos: parseTodos(row.todos),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
@@ -90,6 +129,7 @@ export interface CreateCardInput {
   status?: TaskStatus;
   priority?: TaskPriority;
   dueAt?: string | null;
+  todos?: TodoInput[];
 }
 
 export async function createCard(runtime: TasksRuntime, input: CreateCardInput): Promise<TaskCard> {
@@ -98,10 +138,11 @@ export async function createCard(runtime: TasksRuntime, input: CreateCardInput):
   const rank = (await columnMaxRank(runtime, status)) + RANK_STEP;
   const id = randomUUID();
   const completedAt = status === 'done' ? now : null;
+  const todos = input.todos !== undefined ? JSON.stringify(normalizeTodos(input.todos)) : '[]';
   await runtime.query(
-    `INSERT INTO tasks (id, title, body, status, priority, due_at, rank, created_at, updated_at, completed_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9)`,
-    [id, input.title, input.body ?? '', status, input.priority ?? 'medium', input.dueAt ?? null, rank, now, completedAt],
+    `INSERT INTO tasks (id, title, body, status, priority, due_at, rank, created_at, updated_at, completed_at, todos)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9, $10)`,
+    [id, input.title, input.body ?? '', status, input.priority ?? 'medium', input.dueAt ?? null, rank, now, completedAt, todos],
   );
   await bumpRevision(runtime);
   const card = await findCard(runtime, id);
@@ -115,6 +156,8 @@ export interface UpdateCardPatch {
   status?: TaskStatus;
   priority?: TaskPriority;
   dueAt?: string | null;
+  /** Whole-checklist replacement; absent → keep the current list. */
+  todos?: TodoInput[];
 }
 
 /** Field update; a status change appends the card to the new column. */
@@ -134,9 +177,10 @@ export async function updateCard(runtime: TasksRuntime, id: string, patch: Updat
     completedAt = now;
   }
 
+  const todos = patch.todos !== undefined ? JSON.stringify(normalizeTodos(patch.todos)) : null;
   await runtime.query(
     `UPDATE tasks SET title = $2, body = $3, priority = $4, due_at = $5, status = $6, rank = $7,
-       completed_at = $8, updated_at = $9 WHERE id = $1`,
+       completed_at = $8, updated_at = $9, todos = COALESCE($10, todos) WHERE id = $1`,
     [
       id,
       patch.title ?? current.title,
@@ -147,6 +191,7 @@ export async function updateCard(runtime: TasksRuntime, id: string, patch: Updat
       rank,
       completedAt,
       now,
+      todos,
     ],
   );
   await bumpRevision(runtime);

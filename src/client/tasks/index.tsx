@@ -47,6 +47,12 @@ const zh: Record<string, string> = {
   'editor.restore': '恢复',
   'editor.delete': '删除',
   'editor.deleteConfirm': '确定永久删除该任务？此操作不可撤销。',
+  'todos.title': '子任务',
+  'todos.empty': '暂无子任务。',
+  'todos.addPlaceholder': '新增子任务，回车或点「添加」',
+  'todos.add': '添加',
+  'todos.toggle': '勾选子任务',
+  'todos.remove': '删除子任务',
 };
 
 const en: Record<string, string> = {
@@ -86,6 +92,12 @@ const en: Record<string, string> = {
   'editor.restore': 'Restore',
   'editor.delete': 'Delete',
   'editor.deleteConfirm': 'Permanently delete this task? This cannot be undone.',
+  'todos.title': 'Subtasks',
+  'todos.empty': 'No subtasks yet.',
+  'todos.addPlaceholder': 'Add a subtask, then press Enter or click Add',
+  'todos.add': 'Add',
+  'todos.toggle': 'Toggle subtask',
+  'todos.remove': 'Remove subtask',
 };
 
 function ensureStyles(): void {

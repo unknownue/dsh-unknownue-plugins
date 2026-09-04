@@ -16,6 +16,13 @@ export type TaskPriority = 'low' | 'medium' | 'high';
 export const TASK_STATUSES: readonly TaskStatus[] = ['todo', 'in_progress', 'blocked', 'done'];
 export const TASK_PRIORITIES: readonly TaskPriority[] = ['low', 'medium', 'high'];
 
+/** One checkable subtask of a card (id minted host-side when absent). */
+export interface TaskTodo {
+  id: string;
+  content: string;
+  done: boolean;
+}
+
 /** Public card DTO (camelCase; the wire API uses snake_case, paperspace-style). */
 export interface TaskCard {
   id: string;
@@ -28,6 +35,8 @@ export interface TaskCard {
   /** Fractional rank inside its status column (larger = further down). */
   rank: number;
   archived: boolean;
+  /** Checkable subtask checklist; empty when the card has none. */
+  todos: TaskTodo[];
   createdAt: number;
   updatedAt: number;
   completedAt: number | null;

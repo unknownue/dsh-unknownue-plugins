@@ -14,6 +14,7 @@ import {
   type TaskCard,
   type TaskPriority,
   type TaskStatus,
+  type TaskTodo,
   archiveCard,
   createCard,
   deleteCard,
@@ -32,6 +33,8 @@ export interface TasksViewProps {
 
 const PRIORITIES: readonly TaskPriority[] = ['low', 'medium', 'high'];
 const POLL_MS = 5000;
+/** Checklist items shown directly on a board card before folding into +n. */
+const CARD_TODO_PREVIEW = 3;
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -44,6 +47,10 @@ function isOverdue(card: TaskCard): boolean {
 function formatUpdated(ms: number): string {
   const date = new Date(ms);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function todoDoneCount(card: TaskCard): number {
+  return card.todos.filter(item => item.done).length;
 }
 
 export default function TasksView({ t }: TasksViewProps) {
@@ -93,6 +100,20 @@ export default function TasksView({ t }: TasksViewProps) {
     async (id: string, status: TaskStatus) => {
       try {
         await moveCard(id, { status });
+        await refresh();
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [refresh],
+  );
+
+  /** Toggle one subtask straight from the board card (whole-list replace). */
+  const toggleTodo = useCallback(
+    async (card: TaskCard, index: number) => {
+      try {
+        const todos = card.todos.map((item, i) => (i === index ? { ...item, done: !item.done } : item));
+        await updateCard(card.id, { todos });
         await refresh();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -171,9 +192,34 @@ export default function TasksView({ t }: TasksViewProps) {
                       onClick={() => setEditing(card)}
                     >
                       <div className="tk-card-title">{card.title}</div>
+                      {card.todos.length > 0 && (
+                        <ul className="tk-card-todos">
+                          {card.todos.slice(0, CARD_TODO_PREVIEW).map((item, index) => (
+                            <li key={item.id} className={item.done ? 'tk-card-todo-row tk-todo-done' : 'tk-card-todo-row'}>
+                              <label className="tk-todo-check" onClick={event => event.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={item.done}
+                                  aria-label={t('todos.toggle')}
+                                  onChange={() => void toggleTodo(card, index)}
+                                />
+                              </label>
+                              <span className="tk-todo-content">{item.content}</span>
+                            </li>
+                          ))}
+                          {card.todos.length > CARD_TODO_PREVIEW && (
+                            <li className="tk-todo-more">+{card.todos.length - CARD_TODO_PREVIEW}</li>
+                          )}
+                        </ul>
+                      )}
                       <div className="tk-card-meta">
                         <span className={`tk-prio tk-prio-${card.priority}`}>{t(`priority.${card.priority}`)}</span>
                         {card.dueAt !== null && <span className={isOverdue(card) ? 'tk-due tk-due-over' : 'tk-due'}>{card.dueAt}</span>}
+                        {card.todos.length > 0 && (
+                          <span className="tk-todo-count">
+                            {todoDoneCount(card)}/{card.todos.length}
+                          </span>
+                        )}
                       </div>
                     </article>
                   ))}
@@ -199,7 +245,10 @@ export default function TasksView({ t }: TasksViewProps) {
             <tbody>
               {visible.map(card => (
                 <tr key={card.id} className={card.archived ? 'tk-row-archived' : undefined} onClick={() => setEditing(card)}>
-                  <td className="tk-cell-title">{card.title}</td>
+                  <td className="tk-cell-title">
+                    {card.title}
+                    {card.todos.length > 0 && <span className="tk-todo-count">{todoDoneCount(card)}/{card.todos.length}</span>}
+                  </td>
                   <td>{t(`status.${card.status}`)}</td>
                   <td>{t(`priority.${card.priority}`)}</td>
                   <td className={isOverdue(card) ? 'tk-due-over' : undefined}>{card.dueAt ?? '—'}</td>
@@ -268,14 +317,33 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
   const [status, setStatus] = useState<TaskStatus>(existing?.status ?? 'todo');
   const [priority, setPriority] = useState<TaskPriority>(existing?.priority ?? 'medium');
   const [due, setDue] = useState(existing?.dueAt ?? '');
+  const [todos, setTodos] = useState<TaskTodo[]>(existing?.todos.map(item => ({ ...item })) ?? []);
+  const [newTodo, setNewTodo] = useState('');
   const [busy, setBusy] = useState(false);
+
+  function addTodo() {
+    const content = newTodo.trim();
+    if (content === '' || todos.length >= 50) return;
+    setTodos([...todos, { id: '', content, done: false }]);
+    setNewTodo('');
+  }
+
+  function toggleDraftTodo(index: number) {
+    setTodos(todos.map((item, i) => (i === index ? { ...item, done: !item.done } : item)));
+  }
+
+  function removeDraftTodo(index: number) {
+    setTodos(todos.filter((_, i) => i !== index));
+  }
 
   async function save(event: FormEvent) {
     event.preventDefault();
     if (title.trim() === '') return;
     setBusy(true);
     try {
-      const payload = { title: title.trim(), body, status, priority, due_at: due === '' ? null : due };
+      // Draft items carry an empty id; the host mints ids for them.
+      const payloadTodos = todos.map(({ id, content, done }) => (id === '' ? { content, done } : { id, content, done }));
+      const payload = { title: title.trim(), body, status, priority, due_at: due === '' ? null : due, todos: payloadTodos };
       if (existing === null) await createCard(payload);
       else await updateCard(existing.id, payload);
       await onSaved(existing?.archived === true);
@@ -360,6 +428,45 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
             <span>{t('editor.due')}</span>
             <input className="tk-input" type="date" value={due} onChange={event => setDue(event.target.value)} />
           </label>
+        </div>
+
+        <div className="tk-field">
+          <span>
+            {t('todos.title')}
+            {todos.length > 0 && <span className="tk-todo-progress">{todos.filter(item => item.done).length}/{todos.length}</span>}
+          </span>
+          <ul className="tk-todos">
+            {todos.map((item, index) => (
+              <li key={item.id === '' ? `draft-${index}` : item.id} className={item.done ? 'tk-todo-row tk-todo-done' : 'tk-todo-row'}>
+                <label className="tk-todo-check">
+                  <input type="checkbox" checked={item.done} aria-label={t('todos.toggle')} onChange={() => toggleDraftTodo(index)} />
+                </label>
+                <span className="tk-todo-content">{item.content}</span>
+                <button type="button" className="tk-todo-remove" aria-label={t('todos.remove')} onClick={() => removeDraftTodo(index)}>
+                  ✕
+                </button>
+              </li>
+            ))}
+            {todos.length === 0 && <li className="tk-todo-empty">{t('todos.empty')}</li>}
+          </ul>
+          <div className="tk-todo-add">
+            <input
+              className="tk-input"
+              value={newTodo}
+              maxLength={200}
+              placeholder={t('todos.addPlaceholder')}
+              onChange={event => setNewTodo(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  addTodo();
+                }
+              }}
+            />
+            <button type="button" className="tk-btn" disabled={newTodo.trim() === '' || todos.length >= 50} onClick={addTodo}>
+              {t('todos.add')}
+            </button>
+          </div>
         </div>
 
         <footer className="tk-dialog-foot">

@@ -7,6 +7,8 @@
  *   - schema migration on first boot (persisted dataDir under a temp DSH_HOME)
  *   - REST: board/revision, create/update/move/archive/restore/delete,
  *     validation errors, 404s, 405s, loopback fence
+ *   - subtask checklist: create/patch roundtrip, id minting, whole-list
+ *     replacement, validation (blank/51 items/non-boolean/non-uuid)
  *   - fractional ranking (insert before/after neighbours)
  *   - settings: defaults, persistence, restartRequired flag, schema
  *   - dispose → data persists across a fresh runtime (reopen)
@@ -150,6 +152,66 @@ async function main() {
   const missing = await call(api, 'PATCH', `${TASKS_API}/cards/does-not-exist`, { title: 'x' });
   check('patch unknown card → 404 TASK_NOT_FOUND', missing.status === 404 && missing.body.code === 'TASK_NOT_FOUND');
 
+  // ── subtask checklist ─────────────────────────────────────────────────────
+  check('create without todos → empty list', Array.isArray(cardA.todos) && cardA.todos.length === 0, JSON.stringify(cardA.todos));
+
+  const withTodos = await call(api, 'POST', `${TASKS_API}/cards`, {
+    title: '带子任务',
+    todos: [
+      { content: '拆需求', done: false },
+      { id: '00000000-0000-4000-8000-000000000001', content: '写代码', done: true },
+    ],
+  });
+  const todoCard = withTodos.body.card as Record<string, any>;
+  check(
+    'create with todos roundtrips + mints ids',
+    withTodos.status === 200 &&
+      Array.isArray(todoCard.todos) &&
+      todoCard.todos.length === 2 &&
+      typeof todoCard.todos[0].id === 'string' &&
+      todoCard.todos[0].content === '拆需求' &&
+      todoCard.todos[0].done === false &&
+      todoCard.todos[1].content === '写代码' &&
+      todoCard.todos[1].done === true,
+    JSON.stringify(todoCard.todos),
+  );
+  check('provided uuid id is kept', todoCard.todos[1].id === '00000000-0000-4000-8000-000000000001', todoCard.todos[1].id);
+
+  const toggled = await call(api, 'PATCH', `${TASKS_API}/cards/${todoCard.id}`, {
+    todos: [{ id: todoCard.todos[0].id, content: '拆需求', done: true }],
+  });
+  const toggledCard = toggled.body.card as Record<string, any>;
+  check(
+    'patch todos replaces the whole list',
+    toggled.status === 200 && toggledCard.todos.length === 1 && toggledCard.todos[0].done === true,
+    JSON.stringify(toggled.body),
+  );
+
+  const patchNoTodos = await call(api, 'PATCH', `${TASKS_API}/cards/${todoCard.id}`, { title: '改标题不动子任务' });
+  const keepCard = patchNoTodos.body.card as Record<string, any>;
+  check(
+    'patch without todos keeps the list',
+    keepCard.title === '改标题不动子任务' && keepCard.todos.length === 1 && keepCard.todos[0].done === true,
+    JSON.stringify(patchNoTodos.body),
+  );
+
+  const cleared = await call(api, 'PATCH', `${TASKS_API}/cards/${todoCard.id}`, { todos: [] });
+  check('patch todos: [] clears the list', (cleared.body.card as Record<string, any>).todos.length === 0);
+
+  const blankContent = await call(api, 'PATCH', `${TASKS_API}/cards/${todoCard.id}`, { todos: [{ content: '   ', done: false }] });
+  check('blank todo content → 400', blankContent.status === 400 && blankContent.body.code === 'VALIDATION_ERROR');
+
+  const tooMany = await call(api, 'PATCH', `${TASKS_API}/cards/${todoCard.id}`, {
+    todos: Array.from({ length: 51 }, (_, index) => ({ content: `t${index}`, done: false })),
+  });
+  check('51 todos → 400', tooMany.status === 400 && tooMany.body.code === 'VALIDATION_ERROR');
+
+  const badDone = await call(api, 'PATCH', `${TASKS_API}/cards/${todoCard.id}`, { todos: [{ content: 'x', done: 'yes' }] });
+  check('non-boolean done → 400', badDone.status === 400 && badDone.body.code === 'VALIDATION_ERROR');
+
+  const badId = await call(api, 'PATCH', `${TASKS_API}/cards/${todoCard.id}`, { todos: [{ id: 'not-a-uuid', content: 'x', done: false }] });
+  check('non-uuid id → 400', badId.status === 400 && badId.body.code === 'VALIDATION_ERROR');
+
   // ── move + fractional ranking ─────────────────────────────────────────────
   const moved = await call(api, 'POST', `${TASKS_API}/cards/${cardA.id}/move`, { status: 'in_progress' });
   const cardA3 = moved.body.card as Record<string, any>;
@@ -163,19 +225,19 @@ async function main() {
   const d = await call(api, 'POST', `${TASKS_API}/cards`, { title: 'D' });
   const cardC = c.body.card as Record<string, any>;
   const cardD = d.body.card as Record<string, any>;
-  check('column ranks grow by 1024', cardC.rank === 1024 && cardD.rank === 2048, JSON.stringify({ c: cardC.rank, d: cardD.rank }));
+  check('column ranks grow by 1024', cardD.rank === cardC.rank + 1024, JSON.stringify({ c: cardC.rank, d: cardD.rank }));
 
   const beforeC = await call(api, 'POST', `${TASKS_API}/cards/${cardA.id}/move`, { status: 'todo', before_id: cardC.id });
   const cardA5 = beforeC.body.card as Record<string, any>;
-  check('move before first card halves rank', beforeC.status === 200 && cardA5.status === 'todo' && cardA5.rank > 0 && cardA5.rank < 1024, JSON.stringify(beforeC.body));
+  check('move before a card lands strictly before it', beforeC.status === 200 && cardA5.status === 'todo' && cardA5.rank < cardC.rank, JSON.stringify(beforeC.body));
 
   const afterD = await call(api, 'POST', `${TASKS_API}/cards/${cardA.id}/move`, { status: 'todo', after_id: cardD.id });
   const cardA6 = afterD.body.card as Record<string, any>;
-  check('move after last card appends', afterD.status === 200 && cardA6.rank > 2048, JSON.stringify(afterD.body));
+  check('move after last card appends', afterD.status === 200 && cardA6.rank > cardD.rank, JSON.stringify(afterD.body));
 
   const between = await call(api, 'POST', `${TASKS_API}/cards/${cardA.id}/move`, { status: 'todo', after_id: cardC.id });
   const cardA7 = between.body.card as Record<string, any>;
-  check('move between neighbours lands strictly between', between.status === 200 && cardA7.rank > 1024 && cardA7.rank < 2048, JSON.stringify(between.body));
+  check('move between neighbours lands strictly between', between.status === 200 && cardA7.rank > cardC.rank && cardA7.rank < cardD.rank, JSON.stringify(between.body));
 
   const wrongColumn = await call(api, 'POST', `${TASKS_API}/cards/${cardA.id}/move`, { status: 'done', before_id: cardC.id });
   check('target not in column → 400', wrongColumn.status === 400 && wrongColumn.body.code === 'TARGET_NOT_IN_COLUMN', JSON.stringify(wrongColumn.body));
@@ -189,7 +251,7 @@ async function main() {
 
   const restored = await call(api, 'POST', `${TASKS_API}/cards/${cardC.id}/restore`);
   const cardC2 = restored.body.card as Record<string, any>;
-  check('restore re-appends the card', restored.status === 200 && cardC2.id === cardC.id && cardC2.rank > 2048, JSON.stringify(restored.body));
+  check('restore re-appends the card', restored.status === 200 && cardC2.id === cardC.id && cardC2.rank > cardD.rank, JSON.stringify(restored.body));
 
   const deleted = await call(api, 'DELETE', `${TASKS_API}/cards/${cardD.id}`);
   check('delete succeeds', deleted.status === 200 && deleted.body.ok === true);
@@ -213,7 +275,10 @@ async function main() {
   // different directory, a fresh apply must boot there, so the reopen check
   // has to use the still-default directory.
   const before = await call(api, 'GET', `${TASKS_API}/board`);
-  const persistedCard = await call(api, 'POST', `${TASKS_API}/cards`, { title: '重启后还在' });
+  const persistedCard = await call(api, 'POST', `${TASKS_API}/cards`, {
+    title: '重启后还在',
+    todos: [{ content: '跨重启子任务', done: true }],
+  });
   const persistedId = (persistedCard.body.card as Record<string, any>).id;
   check('card persisted before dispose', persistedCard.status === 200);
 
@@ -228,6 +293,12 @@ async function main() {
   const reopened = await call(api2, 'GET', `${TASKS_API}/board`);
   const reopenedTasks = reopened.body.tasks as Array<Record<string, unknown>>;
   check('data survives dispose + reopen', reopened.status === 200 && reopenedTasks.some(t => t.id === persistedId), JSON.stringify({ count: reopenedTasks.length, revision: reopened.body.revision }));
+  const reopenedCard = reopenedTasks.find(t => t.id === persistedId) as Record<string, any> | undefined;
+  check(
+    'subtasks survive dispose + reopen',
+    reopenedCard !== undefined && Array.isArray(reopenedCard.todos) && reopenedCard.todos.length === 1 && reopenedCard.todos[0].content === '跨重启子任务' && reopenedCard.todos[0].done === true,
+    JSON.stringify(reopenedCard?.todos),
+  );
   check('revision continues across reopen', reopened.body.revision === before.body.revision + 1, JSON.stringify({ before: before.body.revision, reopened: reopened.body.revision }));
 
   // ── settings (against the second host — settings routes need no runtime) ──
