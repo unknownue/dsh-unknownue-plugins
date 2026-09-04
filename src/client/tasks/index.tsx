@@ -23,6 +23,7 @@ const zh: Record<string, string> = {
   'list.status': '状态',
   'list.priority': '优先级',
   'list.due': '截止',
+  'list.tags': '标签',
   'list.updated': '更新于',
   'list.actions': '操作',
   'list.edit': '编辑',
@@ -61,6 +62,9 @@ const zh: Record<string, string> = {
   'todos.toggle': '勾选子任务',
   'todos.edit': '编辑子任务',
   'todos.remove': '删除子任务',
+  'tags.title': '标签',
+  'tags.addPlaceholder': '新增标签，回车添加',
+  'tags.remove': '移除标签',
 };
 
 const en: Record<string, string> = {
@@ -76,6 +80,7 @@ const en: Record<string, string> = {
   'list.status': 'Status',
   'list.priority': 'Priority',
   'list.due': 'Due',
+  'list.tags': 'Tags',
   'list.updated': 'Updated',
   'list.actions': 'Actions',
   'list.edit': 'Edit',
@@ -114,6 +119,9 @@ const en: Record<string, string> = {
   'todos.toggle': 'Toggle subtask',
   'todos.edit': 'Edit subtask',
   'todos.remove': 'Remove subtask',
+  'tags.title': 'Tags',
+  'tags.addPlaceholder': 'Add a tag and press Enter',
+  'tags.remove': 'Remove tag',
 };
 
 function ensureStyles(): void {

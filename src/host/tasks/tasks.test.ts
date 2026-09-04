@@ -11,6 +11,8 @@
  *     replacement, validation (blank/51 items/non-boolean/non-uuid)
  *   - due date: optional single moment or time range (all-day or HH:mm),
  *     point↔range switching, clearing, inverted-range/format validation
+ *   - tags: create/patch roundtrip, trim + dedupe, whole-list replacement,
+ *     validation (blank/33 chars/21 items/non-string)
  *   - fractional ranking (insert before/after neighbours)
  *   - settings: defaults, persistence, restartRequired flag, schema
  *   - dispose → data persists across a fresh runtime (reopen)
@@ -267,6 +269,40 @@ async function main() {
   const pointAgainCard = pointAgain.body.card as Record<string, any>;
   check('range → point clears due_until', pointAgain.status === 200 && pointAgainCard.due !== null && pointAgainCard.due.kind === 'point' && pointAgainCard.due.at === '2026-09-20', JSON.stringify(pointAgainCard.due));
 
+  // ── tags ───────────────────────────────────────────────────────────────────
+  check('create without tags → empty list', Array.isArray(cardA.tags) && cardA.tags.length === 0, JSON.stringify(cardA.tags));
+
+  const withTags = await call(api, 'POST', `${TASKS_API}/cards`, { title: '带标签', tags: [' 安全 ', '后端', '后端', '紧急'] });
+  const tagCard = withTags.body.card as Record<string, any>;
+  check(
+    'create with tags trims + dedupes',
+    withTags.status === 200 && Array.isArray(tagCard.tags) && tagCard.tags.length === 3 && tagCard.tags[0] === '安全' && tagCard.tags[1] === '后端' && tagCard.tags[2] === '紧急',
+    JSON.stringify(tagCard.tags),
+  );
+
+  const patchTags = await call(api, 'PATCH', `${TASKS_API}/cards/${tagCard.id}`, { tags: ['前端'] });
+  const patchTagCard = patchTags.body.card as Record<string, any>;
+  check('patch tags replaces the whole list', patchTags.status === 200 && patchTagCard.tags.length === 1 && patchTagCard.tags[0] === '前端', JSON.stringify(patchTagCard.tags));
+
+  const patchKeepTags = await call(api, 'PATCH', `${TASKS_API}/cards/${tagCard.id}`, { title: '不动标签' });
+  const patchKeepTagCard = patchKeepTags.body.card as Record<string, any>;
+  check('patch without tags keeps list', patchKeepTagCard.tags.length === 1 && patchKeepTagCard.tags[0] === '前端', JSON.stringify(patchKeepTagCard.tags));
+
+  const tagsCleared = await call(api, 'PATCH', `${TASKS_API}/cards/${tagCard.id}`, { tags: [] });
+  check('patch tags: [] clears list', (tagsCleared.body.card as Record<string, any>).tags.length === 0);
+
+  const blankTag = await call(api, 'POST', `${TASKS_API}/cards`, { title: 'x', tags: ['   '] });
+  check('blank tag → 400', blankTag.status === 400 && blankTag.body.code === 'VALIDATION_ERROR');
+
+  const longTag = await call(api, 'POST', `${TASKS_API}/cards`, { title: 'x', tags: ['a'.repeat(33)] });
+  check('33-char tag → 400', longTag.status === 400 && longTag.body.code === 'VALIDATION_ERROR');
+
+  const tooManyTags = await call(api, 'POST', `${TASKS_API}/cards`, { title: 'x', tags: Array.from({ length: 21 }, (_, index) => `t${index}`) });
+  check('21 tags → 400', tooManyTags.status === 400 && tooManyTags.body.code === 'VALIDATION_ERROR');
+
+  const nonStringTag = await call(api, 'POST', `${TASKS_API}/cards`, { title: 'x', tags: [42] });
+  check('non-string tag → 400', nonStringTag.status === 400 && nonStringTag.body.code === 'VALIDATION_ERROR');
+
   // ── move + fractional ranking ─────────────────────────────────────────────
   const moved = await call(api, 'POST', `${TASKS_API}/cards/${cardA.id}/move`, { status: 'in_progress' });
   const cardA3 = moved.body.card as Record<string, any>;
@@ -334,6 +370,7 @@ async function main() {
     title: '重启后还在',
     due: { kind: 'range', start: '2026-09-10T10:00', end: '2026-09-11' },
     todos: [{ content: '跨重启子任务', done: true }],
+    tags: ['跨重启标签'],
   });
   const persistedId = (persistedCard.body.card as Record<string, any>).id;
   check('card persisted before dispose', persistedCard.status === 200);
@@ -359,6 +396,11 @@ async function main() {
     'due range survives dispose + reopen',
     reopenedCard !== undefined && reopenedCard.due !== null && reopenedCard.due.kind === 'range' && reopenedCard.due.start === '2026-09-10T10:00' && reopenedCard.due.end === '2026-09-11',
     JSON.stringify(reopenedCard?.due),
+  );
+  check(
+    'tags survive dispose + reopen',
+    reopenedCard !== undefined && Array.isArray(reopenedCard.tags) && reopenedCard.tags.length === 1 && reopenedCard.tags[0] === '跨重启标签',
+    JSON.stringify(reopenedCard?.tags),
   );
   check('revision continues across reopen', reopened.body.revision === before.body.revision + 1, JSON.stringify({ before: before.body.revision, reopened: reopened.body.revision }));
 

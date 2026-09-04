@@ -46,6 +46,8 @@ export interface TaskCard {
   archived: boolean;
   /** Checkable subtask checklist; empty when the card has none. */
   todos: TaskTodo[];
+  /** User-assigned tags (0..20, trimmed + deduped); colors derive from the name hash on the client. */
+  tags: string[];
   createdAt: number;
   updatedAt: number;
   completedAt: number | null;

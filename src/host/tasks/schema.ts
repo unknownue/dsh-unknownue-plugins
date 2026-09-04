@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at   BIGINT NOT NULL,
   updated_at   BIGINT NOT NULL,
   completed_at BIGINT,
-  todos        TEXT NOT NULL DEFAULT '[]'
+  todos        TEXT NOT NULL DEFAULT '[]',
+  tags         TEXT NOT NULL DEFAULT '[]'
 );
 
 -- Columns for databases booted before the features landed:
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 -- idempotent ALTERs cover every already-booted board.
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS todos TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_until TEXT;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags TEXT NOT NULL DEFAULT '[]';
 
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,

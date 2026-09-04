@@ -59,6 +59,7 @@ const todoSchema = z.object({
   done: z.boolean(),
 });
 const todosSchema = z.array(todoSchema).max(50);
+const tagsSchema = z.array(z.string().trim().min(1).max(32)).max(20);
 
 const createSchema = z
   .object({
@@ -68,6 +69,7 @@ const createSchema = z
     priority: prioritySchema.optional(),
     due: dueSchema.optional(),
     todos: todosSchema.optional(),
+    tags: tagsSchema.optional(),
   })
   .strict();
 
@@ -79,6 +81,7 @@ const updateSchema = z
     priority: prioritySchema.optional(),
     due: dueSchema.optional(),
     todos: todosSchema.optional(),
+    tags: tagsSchema.optional(),
   })
   .strict();
 
@@ -166,6 +169,7 @@ export function registerRoutes(webServer: WebServer, host: TasksHost): void {
               priority: input.priority as TaskPriority | undefined,
               due: input.due,
               todos: input.todos,
+              tags: input.tags,
             });
             return json(res, 200, { card });
           }
@@ -183,6 +187,7 @@ export function registerRoutes(webServer: WebServer, host: TasksHost): void {
                 priority: input.priority as TaskPriority | undefined,
                 due: input.due,
                 todos: input.todos,
+                tags: input.tags,
               });
               return json(res, 200, { card });
             }

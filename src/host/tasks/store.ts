@@ -24,11 +24,13 @@ interface TaskRow {
   updated_at: number;
   completed_at: number | null;
   todos: string;
+  tags: string;
 }
 
 const RANK_STEP = 1024;
 
-const COLUMNS = 'id, title, body, status, priority, due_at, due_until, rank, archived, created_at, updated_at, completed_at, todos';
+const COLUMNS =
+  'id, title, body, status, priority, due_at, due_until, rank, archived, created_at, updated_at, completed_at, todos, tags';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -67,6 +69,32 @@ export function normalizeTodos(items: readonly TodoInput[]): TaskTodo[] {
   }));
 }
 
+/** Parse the stored tags JSON; the durable boundary never trusts the column. */
+function parseTags(text: string | null | undefined): string[] {
+  if (typeof text !== 'string' || text === '') return [];
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === 'string' && item !== '').slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
+/** Trim, drop empties, dedupe (exact match) and cap the tag list. */
+export function normalizeTags(items: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of items) {
+    const tag = raw.trim();
+    if (tag === '' || seen.has(tag)) continue;
+    seen.add(tag);
+    out.push(tag);
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
 /** Flatten the wire due union onto the two columns (null → both null). */
 function flattenDue(due: TaskDue | null): { due_at: string | null; due_until: string | null } {
   if (due === null) return { due_at: null, due_until: null };
@@ -95,6 +123,7 @@ function toCard(row: TaskRow): TaskCard {
     rank: row.rank,
     archived: row.archived === 1,
     todos: parseTodos(row.todos),
+    tags: parseTags(row.tags),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
@@ -148,6 +177,7 @@ export interface CreateCardInput {
   priority?: TaskPriority;
   due?: TaskDue | null;
   todos?: TodoInput[];
+  tags?: string[];
 }
 
 export async function createCard(runtime: TasksRuntime, input: CreateCardInput): Promise<TaskCard> {
@@ -157,11 +187,12 @@ export async function createCard(runtime: TasksRuntime, input: CreateCardInput):
   const id = randomUUID();
   const completedAt = status === 'done' ? now : null;
   const todos = input.todos !== undefined ? JSON.stringify(normalizeTodos(input.todos)) : '[]';
+  const tags = input.tags !== undefined ? JSON.stringify(normalizeTags(input.tags)) : '[]';
   const due = flattenDue(input.due ?? null);
   await runtime.query(
-    `INSERT INTO tasks (id, title, body, status, priority, due_at, due_until, rank, created_at, updated_at, completed_at, todos)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10, $11)`,
-    [id, input.title, input.body ?? '', status, input.priority ?? 'medium', due.due_at, due.due_until, rank, now, completedAt, todos],
+    `INSERT INTO tasks (id, title, body, status, priority, due_at, due_until, rank, created_at, updated_at, completed_at, todos, tags)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10, $11, $12)`,
+    [id, input.title, input.body ?? '', status, input.priority ?? 'medium', due.due_at, due.due_until, rank, now, completedAt, todos, tags],
   );
   await bumpRevision(runtime);
   const card = await findCard(runtime, id);
@@ -178,6 +209,8 @@ export interface UpdateCardPatch {
   due?: TaskDue | null;
   /** Whole-checklist replacement; absent → keep the current list. */
   todos?: TodoInput[];
+  /** Whole-tag-list replacement; absent → keep the current list. */
+  tags?: string[];
 }
 
 /** Field update; a status change appends the card to the new column. */
@@ -198,6 +231,7 @@ export async function updateCard(runtime: TasksRuntime, id: string, patch: Updat
   }
 
   const todos = patch.todos !== undefined ? JSON.stringify(normalizeTodos(patch.todos)) : null;
+  const tags = patch.tags !== undefined ? JSON.stringify(normalizeTags(patch.tags)) : null;
   // Due needs a flag pair (not COALESCE): switching range → point must be able
   // to write NULL into due_until, and clearing writes NULL into both.
   const keepDue = patch.due === undefined;
@@ -205,7 +239,8 @@ export async function updateCard(runtime: TasksRuntime, id: string, patch: Updat
   await runtime.query(
     `UPDATE tasks SET title = $2, body = $3, priority = $4, due_at = CASE WHEN $5 THEN due_at ELSE $6 END,
        due_until = CASE WHEN $7 THEN due_until ELSE $8 END, status = $9, rank = $10,
-       completed_at = $11, updated_at = $12, todos = COALESCE($13, todos) WHERE id = $1`,
+       completed_at = $11, updated_at = $12, todos = COALESCE($13, todos),
+       tags = COALESCE($14, tags) WHERE id = $1`,
     [
       id,
       patch.title ?? current.title,
@@ -220,6 +255,7 @@ export async function updateCard(runtime: TasksRuntime, id: string, patch: Updat
       completedAt,
       now,
       todos,
+      tags,
     ],
   );
   await bumpRevision(runtime);

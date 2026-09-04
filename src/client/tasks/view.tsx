@@ -104,6 +104,20 @@ function sortTodosUncheckedFirst(items: readonly TaskTodo[]): TaskTodo[] {
   return [...items].sort((a, b) => Number(a.done) - Number(b.done));
 }
 
+/** Deterministic "random-looking" hue per tag name (stable across renders). */
+function tagHue(name: string): number {
+  let hash = 0;
+  for (const character of name) {
+    hash = (hash * 31 + (character.codePointAt(0) ?? 0)) | 0;
+  }
+  return Math.abs(hash) % 360;
+}
+
+/** Tag chip inline style: white text on the name-derived hue. */
+function tagStyle(name: string): { backgroundColor: string } {
+  return { backgroundColor: `hsl(${tagHue(name)} 62% 42%)` };
+}
+
 export default function TasksView({ t }: TasksViewProps) {
   const [board, setBoard] = useState<TaskCard[]>([]);
   const [revision, setRevision] = useState(-1);
@@ -243,6 +257,15 @@ export default function TasksView({ t }: TasksViewProps) {
                       onClick={() => setEditing(card)}
                     >
                       <div className="tk-card-title">{card.title}</div>
+                      {card.tags.length > 0 && (
+                        <div className="tk-card-tags">
+                          {card.tags.map(tag => (
+                            <span key={tag} className="tk-tag" style={tagStyle(tag)}>
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {card.todos.length > 0 && (
                         <ul className="tk-card-todos">
                           {sortTodosUncheckedFirst(card.todos).slice(0, CARD_TODO_PREVIEW).map((item, index) => (
@@ -291,6 +314,7 @@ export default function TasksView({ t }: TasksViewProps) {
                 <th>{t('list.status')}</th>
                 <th>{t('list.priority')}</th>
                 <th>{t('list.due')}</th>
+                <th>{t('list.tags')}</th>
                 <th>{t('list.updated')}</th>
                 <th>{t('list.actions')}</th>
               </tr>
@@ -305,6 +329,15 @@ export default function TasksView({ t }: TasksViewProps) {
                   <td>{t(`status.${card.status}`)}</td>
                   <td>{t(`priority.${card.priority}`)}</td>
                   <td className={isOverdue(card) ? 'tk-due-over' : undefined}>{card.due === null ? '—' : formatDueLabel(card.due)}</td>
+                  <td>
+                    <div className="tk-cell-tags">
+                      {card.tags.map(tag => (
+                        <span key={tag} className="tk-tag" style={tagStyle(tag)}>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
                   <td className="tk-cell-muted">{formatUpdated(card.updatedAt)}</td>
                   <td>
                     <button
@@ -322,7 +355,7 @@ export default function TasksView({ t }: TasksViewProps) {
               ))}
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="tk-cell-muted">
+                  <td colSpan={7} className="tk-cell-muted">
                     {t('board.empty')}
                   </td>
                 </tr>
@@ -372,6 +405,8 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
   const [due, setDue] = useState<TaskDue | null>(existing?.due ?? null);
   const [todos, setTodos] = useState<TaskTodo[]>(existing?.todos.map(item => ({ ...item })) ?? []);
   const [newTodo, setNewTodo] = useState('');
+  const [tags, setTags] = useState<string[]>(existing?.tags ?? []);
+  const [newTag, setNewTag] = useState('');
   const [busy, setBusy] = useState(false);
 
   function setDueMode(next: DueMode) {
@@ -410,6 +445,17 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
     setTodos(sortedTodos.filter((_, i) => i !== index));
   }
 
+  function addTag() {
+    const tag = newTag.trim();
+    if (tag === '' || tags.includes(tag) || tags.length >= 20) return;
+    setTags([...tags, tag]);
+    setNewTag('');
+  }
+
+  function removeTag(index: number) {
+    setTags(tags.filter((_, i) => i !== index));
+  }
+
   async function save(event: FormEvent) {
     event.preventDefault();
     if (title.trim() === '' || dueInvalid(due)) return;
@@ -417,7 +463,7 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
     try {
       // Draft items carry an empty id; the host mints ids for them.
       const payloadTodos = todos.map(({ id, content, done }) => (id === '' ? { content, done } : { id, content, done }));
-      const payload = { title: title.trim(), body, status, priority, due, todos: payloadTodos };
+      const payload = { title: title.trim(), body, status, priority, due, todos: payloadTodos, tags };
       if (existing === null) await createCard(payload);
       else await updateCard(existing.id, payload);
       await onSaved(existing?.archived === true);
@@ -530,6 +576,42 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
           </div>
         )}
         {dueInvalid(due) && <p className="tk-error">{t('due.invalid')}</p>}
+
+        <div className="tk-field">
+          <span>{t('tags.title')}</span>
+          {tags.length > 0 && (
+            <ul className="tk-tag-list">
+              {tags.map((tag, index) => (
+                <li key={tag} className="tk-tag-item">
+                  <span className="tk-tag" style={tagStyle(tag)}>
+                    {tag}
+                  </span>
+                  <button type="button" className="tk-tag-remove" aria-label={t('tags.remove')} onClick={() => removeTag(index)}>
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="tk-todo-add">
+            <input
+              className="tk-input"
+              value={newTag}
+              maxLength={32}
+              placeholder={t('tags.addPlaceholder')}
+              onChange={event => setNewTag(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  addTag();
+                }
+              }}
+            />
+            <button type="button" className="tk-btn" disabled={newTag.trim() === '' || tags.length >= 20} onClick={addTag}>
+              {t('todos.add')}
+            </button>
+          </div>
+        </div>
 
         <div className="tk-field">
           <span>

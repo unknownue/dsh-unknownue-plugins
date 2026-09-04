@@ -40,6 +40,8 @@ export interface TaskCard {
   rank: number;
   archived: boolean;
   todos: TaskTodo[];
+  /** User-assigned tags; chip colors derive from the name hash client-side. */
+  tags: string[];
   createdAt: number;
   updatedAt: number;
   completedAt: number | null;
@@ -90,6 +92,7 @@ export function createCard(input: {
   priority?: TaskPriority;
   due?: TaskDue | null;
   todos?: TaskTodoInput[];
+  tags?: string[];
 }): Promise<{ card: TaskCard }> {
   return request<{ card: TaskCard }>('/cards', { method: 'POST', body: JSON.stringify(input) });
 }
@@ -103,6 +106,7 @@ export function updateCard(
     priority?: TaskPriority;
     due?: TaskDue | null;
     todos?: TaskTodoInput[];
+    tags?: string[];
   },
 ): Promise<{ card: TaskCard }> {
   return request<{ card: TaskCard }>(`/cards/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) });

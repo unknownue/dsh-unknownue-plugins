@@ -194,6 +194,12 @@ priority, optional due date, archive/restore/delete).
   `due_until` columns (point = `due_at` only); databases from before the
   feature auto-migrate via `ALTER TABLE ... IF NOT EXISTS`, and legacy
   date-only values read as single-moment due dates.
+- **Tags** — each card optionally carries up to 20 user-assigned tags
+  (strings, trimmed + deduped). Board cards and the list view render them as
+  colored chips whose hue derives deterministically from the tag name (looks
+  random, stays stable); the card editor adds/removes tags with a free-text
+  input. PATCH `tags` is a whole-list replacement; omitting it keeps the
+  current list.
 - **Subtasks** — each card optionally carries up to 50 checkable subtasks
   (structured `{ id, content, done }`, ids minted host-side). The board card
   shows the checklist (first 3 items + `+n`, **unchecked items first**) with
