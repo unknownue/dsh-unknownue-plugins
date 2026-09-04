@@ -99,6 +99,11 @@ function todoDoneCount(card: TaskCard): number {
   return card.todos.filter(item => item.done).length;
 }
 
+/** Unchecked subtasks first (stable within each group). */
+function sortTodosUncheckedFirst(items: readonly TaskTodo[]): TaskTodo[] {
+  return [...items].sort((a, b) => Number(a.done) - Number(b.done));
+}
+
 export default function TasksView({ t }: TasksViewProps) {
   const [board, setBoard] = useState<TaskCard[]>([]);
   const [revision, setRevision] = useState(-1);
@@ -158,8 +163,8 @@ export default function TasksView({ t }: TasksViewProps) {
   const toggleTodo = useCallback(
     async (card: TaskCard, index: number) => {
       try {
-        const todos = card.todos.map((item, i) => (i === index ? { ...item, done: !item.done } : item));
-        await updateCard(card.id, { todos });
+        const todos = sortTodosUncheckedFirst(card.todos).map((item, i) => (i === index ? { ...item, done: !item.done } : item));
+        await updateCard(card.id, { todos: sortTodosUncheckedFirst(todos) });
         await refresh();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -240,7 +245,7 @@ export default function TasksView({ t }: TasksViewProps) {
                       <div className="tk-card-title">{card.title}</div>
                       {card.todos.length > 0 && (
                         <ul className="tk-card-todos">
-                          {card.todos.slice(0, CARD_TODO_PREVIEW).map((item, index) => (
+                          {sortTodosUncheckedFirst(card.todos).slice(0, CARD_TODO_PREVIEW).map((item, index) => (
                             <li key={item.id} className={item.done ? 'tk-card-todo-row tk-todo-done' : 'tk-card-todo-row'}>
                               <label className="tk-todo-check" onClick={event => event.stopPropagation()}>
                                 <input
@@ -390,16 +395,19 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
     setNewTodo('');
   }
 
+  // Display order: unchecked first (handlers operate on the same view order).
+  const sortedTodos = sortTodosUncheckedFirst(todos);
+
   function toggleDraftTodo(index: number) {
-    setTodos(todos.map((item, i) => (i === index ? { ...item, done: !item.done } : item)));
+    setTodos(sortTodosUncheckedFirst(sortedTodos.map((item, i) => (i === index ? { ...item, done: !item.done } : item))));
   }
 
   function editDraftTodo(index: number, content: string) {
-    setTodos(todos.map((item, i) => (i === index ? { ...item, content } : item)));
+    setTodos(sortTodosUncheckedFirst(sortedTodos.map((item, i) => (i === index ? { ...item, content } : item))));
   }
 
   function removeDraftTodo(index: number) {
-    setTodos(todos.filter((_, i) => i !== index));
+    setTodos(sortedTodos.filter((_, i) => i !== index));
   }
 
   async function save(event: FormEvent) {
@@ -529,7 +537,7 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
             {todos.length > 0 && <span className="tk-todo-progress">{todos.filter(item => item.done).length}/{todos.length}</span>}
           </span>
           <ul className="tk-todos">
-            {todos.map((item, index) => (
+            {sortedTodos.map((item, index) => (
               <li key={item.id === '' ? `draft-${index}` : item.id} className={item.done ? 'tk-todo-row tk-todo-done' : 'tk-todo-row'}>
                 <label className="tk-todo-check">
                   <input type="checkbox" checked={item.done} aria-label={t('todos.toggle')} onChange={() => toggleDraftTodo(index)} />

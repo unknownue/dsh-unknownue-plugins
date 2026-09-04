@@ -196,9 +196,10 @@ priority, optional due date, archive/restore/delete).
   date-only values read as single-moment due dates.
 - **Subtasks** — each card optionally carries up to 50 checkable subtasks
   (structured `{ id, content, done }`, ids minted host-side). The board card
-  shows the checklist (first 3 items + `+n`) with direct checkboxes and a
-  `done/total` progress badge; the card editor edits the full list (toggle,
-  remove, add). PATCH `todos` is a whole-list replacement; omitting it keeps
+  shows the checklist (first 3 items + `+n`, **unchecked items first**) with
+  direct checkboxes and a `done/total` progress badge; the card editor edits
+  the full list (toggle, remove, add, inline content editing, unchecked
+  first). PATCH `todos` is a whole-list replacement; omitting it keeps
   the current list. Stored as a validated JSON column on `tasks`; databases
   from before the feature auto-migrate via `ALTER TABLE ... IF NOT EXISTS`.
 - **Revision polling** — board state deliberately lives outside the DSH
