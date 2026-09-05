@@ -8,15 +8,18 @@ export type TranslationJobStatus = 'pending' | 'running' | 'completed' | 'failed
 
 /**
  * LLM provider config persisted with a translation job so the worker can run
- * the whole job in the background with the model the user picked in the
- * reader. `apiKey` is stored plaintext but must never be returned by an API
- * response or written to logs.
+ * the whole job in the background with the model the user picked.
+ *
+ * - DSH selection (`{provider, model}`): a provider route + model id from the
+ *   currently-available DSH model directory; executed through DSH's `llm`
+ *   service. Created from the settings-persisted `translateModel`.
+ * - Legacy (`{baseUrl, apiKey, model}`): an OpenAI-compatible endpoint used by
+ *   jobs created before the settings-driven selection existed. `apiKey` is
+ *   stored plaintext but must never be returned by an API response or logged.
  */
-export interface TranslationProviderConfig {
-  baseUrl: string;
-  apiKey: string | null;
-  model: string;
-}
+export type TranslationProviderConfig =
+  | { provider: string; model: string }
+  | { baseUrl: string; apiKey: string | null; model: string };
 
 /** Row shape of `paper.paper_translations` (camelCased via postgres.js). */
 export interface TranslationSnapshotRow {

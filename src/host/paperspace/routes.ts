@@ -12,7 +12,7 @@
  *   DELETE /papers/:ref              → cascade + object-store cleanup
  *   GET  /papers/:ref/assets         → asset metadata
  *   GET  /papers/:ref/assets/:assetId → stream bytes from the object store
- *   POST /papers/:ref/translate-paper { target_lang, provider? }
+ *   POST /papers/:ref/translate-paper { target_lang } (model = settings translateModel)
  *   GET  /papers/:ref/translation?lang=
  *   GET  /papers/:ref/translation-job?lang=
  *   DELETE /papers/:ref/translation?lang=
@@ -26,12 +26,13 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { isLoopback, isLoopbackHost, json, messageOf, readBody } from '../makefile';
-import { ensurePaperMarkdown } from './dsh-integration';
+import { ensurePaperMarkdown, removePaperMarkdown } from './dsh-integration';
 import { createAssetRepo, createPaperRepo, createTranslationRepo } from './domain/index';
 import { createSessionLinkRepo } from './domain/session-links';
 import type { PaperRow, AssetRow } from './domain/types';
 import type { TranslationJobRow, TranslationSnapshotRow, TranslationProviderConfig } from './domain/translations';
 import { settingsInputSchema } from './settings';
+import { listDshModelDirectory } from './worker/translate';
 import {
   isArxivId,
   type PaperDetail,
@@ -76,9 +77,8 @@ const listQuerySchema = z.object({
   search: z.string().max(200).optional(),
   category: z.string().max(80).optional(),
 });
-const modelConfiguration = z.object({ base_url: z.string().url().max(2048), api_key: z.string().min(1).max(4096), model: z.string().min(1).max(200) }).strict();
 const translateLang = z.enum(['zh-CN', 'en-US', 'ja-JP']);
-const translateInput = z.object({ target_lang: translateLang, provider: modelConfiguration.optional() }).strict();
+const translateInput = z.object({ target_lang: translateLang }).strict();
 const translationQuery = z.object({ lang: translateLang.default('zh-CN') });
 
 // ── DTO converters (copied from paperspace server.ts) ──────────────────────
@@ -131,7 +131,11 @@ function toJob(row: TranslationJobRow): TranslationJob {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     // Redacted: the persisted api key never leaves the API.
-    provider: row.provider ? { baseUrl: row.provider.baseUrl, model: row.provider.model } : null,
+    provider: row.provider
+      ? 'provider' in row.provider
+        ? { provider: row.provider.provider, model: row.provider.model }
+        : { baseUrl: row.provider.baseUrl, model: row.provider.model }
+      : null,
   };
 }
 
@@ -148,19 +152,9 @@ function toSnapshot(row: TranslationSnapshotRow): Omit<TranslationWithJob, 'job'
   };
 }
 
-/** Server-side LLM fallback shared by chat and translation, if configured. */
-function serverProvider(): { base_url: string; api_key: string; model: string } | null {
-  if (!process.env.LLM_API_KEY) return null;
-  return {
-    base_url: process.env.LLM_BASE_URL ?? 'https://api.deepseek.com',
-    api_key: process.env.LLM_API_KEY,
-    model: process.env.LLM_MODEL ?? 'deepseek-chat',
-  };
-}
-
 // ── route registration ─────────────────────────────────────────────────────
 
-export function registerRoutes(webServer: WebServerFace, host: PaperspaceHost): void {
+export function registerRoutes(webServer: WebServerFace, host: PaperspaceHost, getLlm?: () => unknown): void {
   const wrap =
     (handler: (req: IncomingMessage, res: ServerResponse) => unknown | Promise<unknown>) =>
     async (req: IncomingMessage, res: ServerResponse) => {
@@ -189,7 +183,17 @@ export function registerRoutes(webServer: WebServerFace, host: PaperspaceHost): 
       const { runtime } = await host.ensureStarted();
       const sql = await runtime.getSql();
       await sql`select 1`;
-      json(res, 200, { status: 'ok' });
+      json(res, 200, { status: 'ok', worker: host.workerSnapshot?.() ?? null });
+    }),
+  });
+
+  // DSH model directory: what the settings page offers for the translation
+  // model. Available BEFORE configuration (the picker needs it to configure).
+  webServer.register({
+    kind: 'exact',
+    path: `${PAPERS_API}/models`,
+    handler: wrap(async (_req, res) => {
+      json(res, 200, await listDshModelDirectory(getLlm?.()));
     }),
   });
 
@@ -342,7 +346,7 @@ export function registerRoutes(webServer: WebServerFace, host: PaperspaceHost): 
           message: 'Paperspace is not configured yet. Open the 论文 tab or DSH Settings → UnPlugin → Paperspace and set the storage location.',
         });
       }
-      const { runtime, store } = await host.ensureStarted();
+      const { runtime, store, config } = await host.ensureStarted();
       const sql = await runtime.getSql();
       const papers = createPaperRepo(sql);
 
@@ -391,6 +395,11 @@ export function registerRoutes(webServer: WebServerFace, host: PaperspaceHost): 
             console.warn(`[paperspace] object cleanup failed for ${paper.arxivId}: ${messageOf(error)}`);
           }
           await papers.deleteById(paper.id);
+          try {
+            await removePaperMarkdown(config.workspaceDir, paper.arxivId);
+          } catch (error) {
+            console.warn(`[paperspace] workspace md cleanup failed for ${paper.arxivId}: ${messageOf(error)}`);
+          }
           await host.refreshPaperContexts?.();
           return res.writeHead(204).end();
         }
@@ -435,13 +444,24 @@ export function registerRoutes(webServer: WebServerFace, host: PaperspaceHost): 
         if (req.method !== 'POST') return json(res, 405, { code: 'METHOD_NOT_ALLOWED', message: 'method not allowed' });
         if (!paper) return paper404();
         if (paper.status !== 'ready') return json(res, 409, { code: 'PAPER_NOT_READY', message: 'Translation requires a ready paper' });
-        const { target_lang, provider } = translateInput.parse(await readBody(req));
-        // Same resolution as chat: browser-provided model wins, server credentials
-        // are the fallback. The resolved config is persisted with the job so the
-        // worker can finish the translation in the background.
-        const resolved = provider ?? serverProvider();
-        if (!resolved) return json(res, 400, { code: 'MODEL_NOT_CONFIGURED', message: 'Configure a model in the reader settings or set server-side LLM credentials.' });
-        const persisted: TranslationProviderConfig = { baseUrl: resolved.base_url, apiKey: resolved.api_key, model: resolved.model };
+        const { target_lang } = translateInput.parse(await readBody(req));
+        // The model comes from the settings-persisted selection (a DSH route
+        // + model id chosen from the currently-available directory).
+        const selection = host.file()?.translateModel ?? null;
+        if (!selection) {
+          return json(res, 400, {
+            code: 'MODEL_NOT_CONFIGURED',
+            message: '尚未指定翻译模型：请在 DSH 设置 → UnPlugin → Paperspace 中选择翻译模型后重试。',
+          });
+        }
+        const directory = await listDshModelDirectory(getLlm?.());
+        if (directory.available && !directory.groups.some(group => group.id === selection.provider)) {
+          return json(res, 400, {
+            code: 'MODEL_UNAVAILABLE',
+            message: `翻译模型提供商 ${selection.provider} 当前不可用，请在 DSH 设置中重新选择。`,
+          });
+        }
+        const persisted: TranslationProviderConfig = { provider: selection.provider, model: selection.model };
         const translations = createTranslationRepo(sql);
         const job = await translations.createJob(paper.id, target_lang, persisted);
         return json(res, 202, { job: toJob(job) });

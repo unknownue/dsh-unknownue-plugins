@@ -37,6 +37,11 @@ export interface PaperspaceConfig {
   translateTimeoutMs: number;
   /** Stuck-job rescan interval in ms. */
   rescanIntervalMs: number;
+  /**
+   * Translation model selection persisted in settings: a DSH provider route
+   * + model id (models currently available in DSH). null = not configured.
+   */
+  translateModel: { provider: string; model: string } | null;
 }
 
 export type PartialPaperspaceConfig = Partial<PaperspaceConfig>;
@@ -85,6 +90,16 @@ export type PaperspaceSaveResult =
   | { ok: true; configured: boolean; restartRequired: boolean }
   | { ok: false; error: string };
 
+/** Worker-loop liveness snapshot, surfaced through GET /health. */
+export interface PaperspaceWorkerSnapshot {
+  /** Last timestamp (ms) the translation loop ticked. */
+  translateTickAt: number;
+  /** Last timestamp (ms) a translation job was claimed. */
+  lastClaimAt: number;
+  /** Last error the translation loop hit (empty when none). */
+  lastError: string;
+}
+
 export interface PaperspaceHost {
   state: PaperspaceState;
   /** Patch/builtin-merged defaults (settings form's initial values). */
@@ -93,6 +108,8 @@ export interface PaperspaceHost {
   ensureStarted(): Promise<PaperspaceActive>;
   active(): PaperspaceActive | null;
   save(input: PaperspaceSettingsInput): Promise<PaperspaceSaveResult>;
+  /** Worker-loop liveness for GET /health (null before the runtime boots). */
+  workerSnapshot?(): PaperspaceWorkerSnapshot | null;
   /** Rebuild the sessionId→paper-context cache after a link changed. */
   refreshPaperContexts?(): Promise<void>;
   /** Name the session after its linked paper (explicit title via dsh-session-title). */

@@ -14,10 +14,22 @@ import type { PaperRow } from '../domain/types';
 import { fetchArxivHtml, fetchArxivMetadata } from './arxiv';
 import { htmlToMarkdown } from './html2md';
 import { rewriteImageUrls, storeImages } from './images';
-import { failTranslationJob, runTranslationJob, TranslationFatalError, type TranslationContext } from './translate';
+import { failTranslationJob, runTranslationJob, TranslationFatalError, type DshLlmFace, type TranslationContext } from './translate';
 
 const CLAIM_GRACE_SECONDS = 3;
 const HEARTBEAT_MS = 1000;
+/**
+ * Transient arXiv/network failures (timeout, 5xx, DNS hiccup) should not
+ * fail a paper permanently: re-queue it a few times before giving up.
+ * Attempts are tracked in-process (bounded, no schema change).
+ */
+const INGEST_MAX_ATTEMPTS = 3;
+const ingestAttempts = new Map<string, number>();
+
+/** Worker loop liveness, surfaced through GET /health for diagnostics. */
+export interface WorkerLiveness {
+  snapshot(): { translateTickAt: number; lastClaimAt: number; lastError: string };
+}
 
 function envNumber(value: number, name: string): number {
   const raw = process.env[name];
@@ -34,7 +46,8 @@ export function startWorker(
   runtime: PaperspaceRuntime,
   store: FileObjectStore,
   config: PaperspaceConfig,
-): void {
+  getLlm?: () => unknown,
+): WorkerLiveness {
   const pollMs = envNumber(config.pollMs, 'WORKER_POLL_MS');
   const ingestTimeoutMs = envNumber(config.ingestTimeoutMs, 'INGEST_TIMEOUT_MS');
   const maxAssetBytes = envNumber(config.maxAssetBytes, 'MAX_ASSET_BYTES');
@@ -43,6 +56,8 @@ export function startWorker(
   const translateStuckAfterMinutes = envNumber(config.translateStuckAfterMinutes, 'TRANSLATE_STUCK_AFTER_MINUTES');
   const translateTimeoutMs = envNumber(config.translateTimeoutMs, 'TRANSLATE_TIMEOUT_MS');
   const rescanIntervalMs = envNumber(config.rescanIntervalMs, 'RESCAN_INTERVAL_MS');
+
+  const liveness = { translateTickAt: 0, lastClaimAt: 0, lastError: '' };
 
   ctx.effect(() => {
     // ── ingest (verbatim port; heartbeat + transaction per paper) ──────────
@@ -81,10 +96,19 @@ export function startWorker(
         await ensurePaperMarkdown(sql, config.workspaceDir, paper.arxivId);
 
         console.log(`[paperspace] ingested ${paper.arxivId}: ${assets.length} assets, ${markdown.length} markdown chars`);
+        ingestAttempts.delete(paper.id);
       } catch (error) {
         const message = messageOf(error);
-        await papers.markFailed(paper.id, message);
-        console.error(`[paperspace] ingest failed ${paper.arxivId}: ${message}`);
+        const attempts = (ingestAttempts.get(paper.id) ?? 0) + 1;
+        if (attempts < INGEST_MAX_ATTEMPTS) {
+          ingestAttempts.set(paper.id, attempts);
+          await papers.requeue(paper.id);
+          console.warn(`[paperspace] ingest ${paper.arxivId} failed (attempt ${attempts}/${INGEST_MAX_ATTEMPTS}): ${message} — re-queued for retry`);
+        } else {
+          ingestAttempts.delete(paper.id);
+          await papers.markFailed(paper.id, message);
+          console.error(`[paperspace] ingest failed ${paper.arxivId}: ${message}`);
+        }
       } finally {
         clearInterval(heartbeat);
       }
@@ -104,13 +128,15 @@ export function startWorker(
       const papers = createPaperRepo(sql);
       const job = await translations.claimNextJob();
       if (!job) return false;
-      // The provider is persisted with the job (same source as reader chat).
-      // The env fallback only serves jobs created before the provider column
-      // existed; the API rejects new jobs without a resolved provider.
+      liveness.lastClaimAt = Date.now();
+      // The provider is persisted with the job: a settings-specified DSH route
+      // ({provider, model}) or a legacy OpenAI-compatible endpoint. The env
+      // fallback only serves jobs created before the provider column existed.
       const provider = job.provider ?? (process.env.LLM_API_KEY ? { baseUrl: process.env.LLM_BASE_URL ?? 'https://api.deepseek.com', apiKey: process.env.LLM_API_KEY, model: process.env.LLM_MODEL ?? 'deepseek-chat' } : null);
       const translationContext: TranslationContext = {
         translations,
         provider: provider ?? { baseUrl: '', apiKey: null, model: '' },
+        llm: (getLlm?.() as DshLlmFace | undefined) ?? null,
         timeoutMs: translateTimeoutMs,
         maxAttempts: translateMaxAttempts,
       };
@@ -158,9 +184,21 @@ export function startWorker(
     const translateTimer = setInterval(() => {
       if (translating) return;
       translating = true;
+      liveness.translateTickAt = Date.now();
+      // Watchdog: a translation that somehow never settles (hung adapter /
+      // stuck DB call) must not starve the queue forever.
+      const watchdog = setTimeout(() => {
+        liveness.lastError = 'watchdog: tick overran ' + (translateTimeoutMs + 60000) + 'ms';
+        console.error('[paperspace] translation watchdog fired — releasing queue slot');
+        translating = false;
+      }, translateTimeoutMs + 60000);
       void translateOne()
-        .catch(error => console.error('[paperspace] translation tick failed', messageOf(error)))
+        .catch(error => {
+          liveness.lastError = messageOf(error);
+          console.error('[paperspace] translation tick failed', messageOf(error));
+        })
         .finally(() => {
+          clearTimeout(watchdog);
           translating = false;
         });
     }, pollMs);
@@ -184,4 +222,6 @@ export function startWorker(
       clearInterval(rescanTimer);
     };
   }, 'dsh-unknownue-plugins/paperspace: worker loops');
+
+  return { snapshot: () => ({ ...liveness }) };
 }

@@ -13,7 +13,7 @@
  * Services are feature-detected from the host context so the row still loads
  * in compositions without sessions/workspace/tools (routes then answer 501).
  */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
@@ -42,6 +42,11 @@ export async function ensurePaperMarkdown(sql: Sql, workspaceDir: string, arxivI
   const file = join(dir, arxivId + '.md');
   await writeFile(file, row.markdown, 'utf8');
   return file;
+}
+
+/** Remove the paper's materialized markdown from the shared workspace (best-effort). */
+export async function removePaperMarkdown(workspaceDir: string, arxivId: string): Promise<void> {
+  await rm(join(papersSubdir(workspaceDir), arxivId + '.md'), { force: true });
 }
 
 // ── DSH tool registration ──────────────────────────────────────────────────

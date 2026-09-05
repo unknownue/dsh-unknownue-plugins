@@ -35,6 +35,7 @@ export interface PaperspaceSettingsInput {
   translateTimeoutMs?: number;
   rescanIntervalMs?: number;
   workspaceDir?: string;
+  translateModel?: { provider: string; model: string } | null;
 }
 
 /** Harness home: `DSH_HOME` when set, else `~/.dsh` (dsh-workspace-enhancement pattern). */
@@ -62,13 +63,14 @@ export function builtinDefaults(): PaperspaceConfig {
     port: 0,
     initialMemoryBytes: 512 * 1024 * 1024,
     pollMs: 5000,
-    ingestTimeoutMs: 30000,
+    ingestTimeoutMs: 60000,
     maxAssetBytes: 10 * 1024 * 1024,
     ingestConcurrency: 2,
     translateMaxAttempts: 3,
     translateStuckAfterMinutes: 30,
     translateTimeoutMs: 120000,
     rescanIntervalMs: 60000,
+    translateModel: null,
   };
 }
 
@@ -96,6 +98,7 @@ export function resolveConfig(
     translateStuckAfterMinutes: typeof row.translateStuckAfterMinutes === 'number' ? row.translateStuckAfterMinutes : base.translateStuckAfterMinutes,
     translateTimeoutMs: typeof row.translateTimeoutMs === 'number' ? row.translateTimeoutMs : base.translateTimeoutMs,
     rescanIntervalMs: typeof row.rescanIntervalMs === 'number' ? row.rescanIntervalMs : base.rescanIntervalMs,
+    translateModel: normalizeSelection(row.translateModel),
   };
   if (!file) return merged;
   const fileDataDir = file.dataDir ? normalizePath(file.dataDir)! : merged.dataDir;
@@ -113,10 +116,19 @@ export function resolveConfig(
     translateStuckAfterMinutes: file.translateStuckAfterMinutes,
     translateTimeoutMs: file.translateTimeoutMs,
     rescanIntervalMs: file.rescanIntervalMs,
+    translateModel: file.translateModel ?? merged.translateModel,
   };
 }
 
+/** Keep only well-formed `{provider, model}` selections; anything else is null. */
+function normalizeSelection(value: { provider?: unknown; model?: unknown } | null | undefined): { provider: string; model: string } | null {
+  if (!value || typeof value !== 'object') return null;
+  if (typeof value.provider !== 'string' || value.provider === '' || typeof value.model !== 'string' || value.model === '') return null;
+  return { provider: value.provider.slice(0, 200), model: value.model.slice(0, 200) };
+}
+
 const pathSchema = z.string().min(1).max(1024);
+export const translateModelSchema = z.object({ provider: z.string().min(1).max(200), model: z.string().min(1).max(200) }).strict();
 export const settingsInputSchema = z.object({
   configured: z.boolean(),
   dataDir: pathSchema.optional(),
@@ -132,6 +144,7 @@ export const settingsInputSchema = z.object({
   translateStuckAfterMinutes: z.number().int().min(1).max(1440).optional(),
   translateTimeoutMs: z.number().int().min(1000).max(3600000).optional(),
   rescanIntervalMs: z.number().int().min(5000).max(86400000).optional(),
+  translateModel: translateModelSchema.nullable().optional(),
 }).strict();
 
 /** Validate + merge an input onto the current effective settings. */
@@ -159,6 +172,7 @@ export function applySettingsInput(
     translateStuckAfterMinutes: input.translateStuckAfterMinutes ?? base.translateStuckAfterMinutes,
     translateTimeoutMs: input.translateTimeoutMs ?? base.translateTimeoutMs,
     rescanIntervalMs: input.rescanIntervalMs ?? base.rescanIntervalMs,
+    translateModel: input.translateModel !== undefined ? input.translateModel : base.translateModel,
   };
 }
 

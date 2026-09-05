@@ -173,13 +173,29 @@ export function buildExplorerRemote(): FileManagerRemote {
       ok: true,
       value: { path: resolvedRoot !== "" ? resolvedRoot : cwd },
     }),
-    setRoot: (path) =>
-      envelope(
-        call<any>(EXPLORER_API, "setRoot", { cwd, path }).then((v) => {
-          cwd = String(path);
-          resolvedRoot = v.path;
-          return { path: v.path };
-        }),
-      ),
+    setRoot: (path) => {
+      // Pin the request cwd onto the NEW session's path BEFORE the call and on
+      // failure too. The host resolves `path` against this cwd, and
+      // dsh-workspace-enhancement's mixed fs provider routes the request into
+      // the cwd's world (local vs remote). Sending the previous session's cwd
+      // here silently misroutes a LOCAL path into the REMOTE world (the file
+      // tab then showed the old remote tree for the local session), so the
+      // routing basis must always be the path being pinned — never stale state.
+      const next = String(path);
+      return envelope(
+        call<any>(EXPLORER_API, "setRoot", { cwd: next, path: next }).then(
+          (v) => {
+            cwd = next;
+            resolvedRoot = v.path;
+            return { path: v.path };
+          },
+          (error) => {
+            cwd = next;
+            resolvedRoot = ""; // a failed pin must not keep the stale root
+            throw error;
+          },
+        ),
+      );
+    },
   };
 }

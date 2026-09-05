@@ -212,6 +212,27 @@ check("spelling empty", parseRemoteSpelling(""), null);
   check("ssh:// cwd pinned", resolveLog.at(-1)!.cwd, "ssh://c1/");
 }
 
+// LOCAL absolute paths must resolve LOCALLY even with a remote cwd (the mixed
+// provider routes by the cwd's world; a stale remote cwd must never send a
+// drive-letter / UNC path over SFTP — the remote→local session-switch defect).
+{
+  const resolveLog: Array<{ path: string; cwd?: string }> = [];
+  const { ctx } = makeCtx({ world: "local", resolveLog });
+  const ph = "C:\\Users\\u\\.dsh\\dsw-routes\\c1\\home\\u";
+
+  await call(ctx, "resolvePath", { cwd: ph, path: "E:\\Workspace" });
+  check("drive path cwd stripped", resolveLog.at(-1)!.cwd, undefined);
+  check("drive path kept", resolveLog.at(-1)!.path, "E:\\Workspace");
+
+  await call(ctx, "resolvePath", { cwd: ph, path: "\\\\server\\share\\dir" });
+  check("UNC path cwd stripped", resolveLog.at(-1)!.cwd, undefined);
+  check("UNC path kept", resolveLog.at(-1)!.path, "\\\\server\\share\\dir");
+
+  // POSIX-absolute paths under a remote cwd keep the remote routing (normal remote case)
+  await call(ctx, "resolvePath", { cwd: ph, path: "/home/u/notes.md" });
+  check("remote posix cwd kept", resolveLog.at(-1)!.cwd, ph);
+}
+
 // REMOTE structural spawn cwd: a LOCAL cwd must never reach the remote spawn
 {
   const { ctx, remoteLog } = makeCtx({ world: "remote" });

@@ -28,7 +28,7 @@ import {
   resolveConfig,
   saveSettingsFile,
 } from './settings';
-import { startWorker } from './worker/loops';
+import { startWorker, type WorkerLiveness } from './worker/loops';
 import type {
   PaperspaceActive,
   PaperspaceConfig,
@@ -48,6 +48,7 @@ export function apply(ctx: PaperspaceHostContext, config: PartialPaperspaceConfi
   const row = resolveConfig(config);
   let file = loadSettingsFile();
   let active: PaperspaceActive | null = null;
+  let worker: WorkerLiveness | null = null;
 
   const state: PaperspaceState = {
     configured: file?.configured === true,
@@ -184,6 +185,7 @@ export function apply(ctx: PaperspaceHostContext, config: PartialPaperspaceConfi
       contextCacheKeys: Array.from(paperContextCache.keys()),
       providerStats: { ...providerStats },
     }),
+    workerSnapshot: () => worker?.snapshot() ?? null,
     async ensureStarted() {
       if (!file?.configured) throw new Error('paperspace is not configured yet; save settings first');
       if (active) return active;
@@ -192,7 +194,7 @@ export function apply(ctx: PaperspaceHostContext, config: PartialPaperspaceConfi
       const store = new FileObjectStore(effective.assetsDir);
       active = { config: effective, runtime, store };
       await runtime.ready; // migrations + pgwire socket bound
-      startWorker(ctx, runtime, store, effective);
+      worker = startWorker(ctx, runtime, store, effective, () => service('llm'));
       ensureToolsRegistered();
       ensureContextProvider();
       await refreshPaperContexts();
@@ -239,7 +241,7 @@ export function apply(ctx: PaperspaceHostContext, config: PartialPaperspaceConfi
     'dsh-unknownue-plugins/paperspace: runtime dispose',
   );
 
-  registerRoutes(ctx.webServer, host);
+  registerRoutes(ctx.webServer, host, () => service('llm'));
 
   // Real DSH tools: grounded in whichever session called them (exec.agent →
   // paper_sessions → paper). Registered lazily (retried on runtime start when

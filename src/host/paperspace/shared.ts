@@ -6,8 +6,9 @@ export type PaperStatus = 'ingesting' | 'ready' | 'failed';
 export type TranslationLanguage = 'zh-CN' | 'en-US' | 'ja-JP';
 export type TranslationStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
-/** Provider info exposed in API responses — the api key is always redacted. */
-export interface TranslationProviderInfo { baseUrl: string; model: string; }
+/** Provider info exposed in API responses — the api key is always redacted.
+ *  DSH-route jobs carry `provider` (route id); legacy jobs carry `baseUrl`. */
+export interface TranslationProviderInfo { provider?: string; baseUrl?: string; model: string; }
 export interface TranslationJob { id: string; paperId: string; targetLang: TranslationLanguage; status: TranslationStatus; progress: number; total: number; attempts: number; startedAt: string | null; error: string | null; createdAt: string; updatedAt: string; provider: TranslationProviderInfo | null; }
 export interface TranslationSnapshot { paperId: string; targetLang: TranslationLanguage; paragraphs: Array<string | null>; offsets: Array<{ start: number; end: number }>; glossary: Record<string, string>; status: TranslationStatus; model: string | null; updatedAt: string; }
 export interface TranslationWithJob extends TranslationSnapshot { job: TranslationJob | null; }

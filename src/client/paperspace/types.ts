@@ -34,7 +34,8 @@ export interface TranslationJob {
   error: string | null;
   createdAt: string;
   updatedAt: string;
-  provider: { baseUrl: string; model: string } | null;
+  /** Settings-specified DSH route ({provider, model}) or legacy endpoint ({baseUrl, model}). */
+  provider: { provider?: string; baseUrl?: string; model: string } | null;
 }
 
 export interface TranslationSnapshot {

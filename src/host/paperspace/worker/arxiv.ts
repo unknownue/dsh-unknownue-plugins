@@ -70,7 +70,11 @@ export interface ArxivHtml {
  */
 export async function fetchArxivHtml(arxivId: string, timeoutMs: number): Promise<ArxivHtml> {
   const primary = `https://arxiv.org/html/${arxivId}`;
-  const primaryResponse = await fetchWithTimeout(primary, timeoutMs, {
+  // Give the primary endpoint only a slice of the budget so a hanging
+  // arxiv.org response can't eat the whole timeout before the ar5iv
+  // fallback gets a chance.
+  const primaryTimeoutMs = Math.min(timeoutMs, 12000);
+  const primaryResponse = await fetchWithTimeout(primary, primaryTimeoutMs, {
     headers: { accept: 'text/html' },
   });
   if (primaryResponse.ok) {

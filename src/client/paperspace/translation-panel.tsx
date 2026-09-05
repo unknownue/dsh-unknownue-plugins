@@ -5,7 +5,6 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Article, BilingualArticle } from './markdown';
-import { useModelSelection } from './model-selection';
 import { paperUrl } from './api';
 import type { Lang, TranslationJob, TranslationSnapshot, ViewMode } from './types';
 
@@ -44,9 +43,6 @@ export default function TranslationPanel({
   initial: InitialTranslation;
   initialMode?: ViewMode;
 }) {
-  // Same model selection as the chat panel: a translation always runs with
-  // whatever provider/model the user currently has picked.
-  const { baseUrl, model, apiKey, configured } = useModelSelection();
   const [lang, setLang] = useState<Lang>('zh-CN');
   const [snapshot, setSnapshot] = useState<TranslationSnapshot | null>(initial);
   const [job, setJob] = useState<TranslationJob | null>(initial?.job ?? null);
@@ -99,17 +95,13 @@ export default function TranslationPanel({
   }, [refresh, busy]);
 
   async function startTranslation() {
-    if (!configured || !baseUrl || !model) {
-      setActionError('Configure a model in the reader settings first.');
-      return;
-    }
     setBusyAction(true);
     setActionError('');
     try {
       const response = await fetch(`${paperUrl(arxivId)}/translate-paper`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ target_lang: lang, provider: { base_url: baseUrl, api_key: apiKey ?? '', model } }),
+        body: JSON.stringify({ target_lang: lang }),
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.message ?? body?.code ?? 'Failed to start translation');
@@ -165,6 +157,8 @@ export default function TranslationPanel({
           ))}
         </select>
 
+        <span className="translation-hint">模型在 DSH 设置 → UnPlugin → Paperspace 中指定</span>
+
         {done ? (
           <>
             <div className="translation-modes" role="group" aria-label="Translation view">
@@ -175,7 +169,7 @@ export default function TranslationPanel({
               ))}
             </div>
             {(job?.provider?.model || snapshot?.model) && <span className="translation-model">模型：{job?.provider?.model ?? snapshot?.model}</span>}
-            <button type="button" className="button compact ghost" onClick={() => void startTranslation()} disabled={busyAction || !configured} title={configured ? '' : 'Configure a model in the reader settings'}>
+            <button type="button" className="button compact ghost" onClick={() => void startTranslation()} disabled={busyAction}>
               重新翻译
             </button>
             <button type="button" className="button compact ghost" onClick={() => void deleteTranslation()} disabled={busyAction}>
@@ -201,17 +195,14 @@ export default function TranslationPanel({
         ) : failed ? (
           <>
             <span className="translation-error">⚠ 翻译失败：{job?.error ?? '未知错误'}</span>
-            <button type="button" className="button compact" onClick={() => void startTranslation()} disabled={busyAction || !configured} title={configured ? '' : 'Configure a model in the reader settings'}>
+            <button type="button" className="button compact" onClick={() => void startTranslation()} disabled={busyAction}>
               重试
             </button>
           </>
         ) : (
-          <>
-            <button type="button" className="button compact" onClick={() => void startTranslation()} disabled={busyAction || !configured} title={configured ? '' : 'Configure a model in the reader settings'}>
-              {LANGS.find(entry => entry.id === lang)?.button ?? '翻译'}
-            </button>
-            {!configured && <span className="translation-error">未配置模型：请先在 ⚙ 模型设置中配置，或在聊天面板选择模型</span>}
-          </>
+          <button type="button" className="button compact" onClick={() => void startTranslation()} disabled={busyAction}>
+            {LANGS.find(entry => entry.id === lang)?.button ?? '翻译'}
+          </button>
         )}
         {actionError && <span className="translation-error">⚠ {actionError}</span>}
       </div>

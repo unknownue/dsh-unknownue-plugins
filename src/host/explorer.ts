@@ -174,6 +174,16 @@ async function resolveValue(fs: FileSystemFace, params: ExplorerParams, value: s
     const pinned = cwdRoute === null || cwdRoute.id !== remote.id ? `ssh://${remote.id}/` : cwd;
     return fs.resolve(remote.path, { cwd: pinned });
   }
+  // A local absolute spelling (drive letter or UNC) must resolve in the LOCAL
+  // world even when the caller's cwd names a remote route: the mixed provider
+  // (dsh-workspace-enhancement) routes every path by its cwd's world, so a
+  // stale remote cwd would silently send `E:\...` over SFTP and fail with
+  // "not a directory" (the file tab's remote→local session-switch defect).
+  if (cwd !== undefined && parseRemoteSpelling(cwd) !== null) {
+    if (/^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\")) {
+      return fs.resolve(value);
+    }
+  }
   return fs.resolve(value, cwd !== undefined ? { cwd } : undefined);
 }
 

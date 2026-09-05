@@ -1,11 +1,10 @@
 /**
  * Paperspace tab root: setup screen (first-run, mandatory configuration) →
- * library list ⇄ paper reader, plus the shared model settings modal.
+ * library list ⇄ paper reader.
  */
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import PapersList from './papers-list';
 import Reader from './reader';
-import ModelSettingsModal from './model-settings-modal';
 import { sessionsUrl } from './api';
 import { fetchSettings, saveSettings, type SettingsView } from './settings-page';
 import { readPaperspaceTheme, rememberPaperspaceTheme, type PaperspaceTheme } from './theme';
@@ -75,6 +74,7 @@ function SetupScreen({ defaults, onConfigured }: { defaults: SettingsView['defau
       translateStuckAfterMinutes: defaults.translateStuckAfterMinutes,
       translateTimeoutMs: defaults.translateTimeoutMs,
       rescanIntervalMs: defaults.rescanIntervalMs,
+      translateModel: defaults.translateModel,
     });
     setBusy(false);
     if (!result.ok) {
@@ -160,7 +160,6 @@ export default function PaperspaceView({ sessions, workspaces }: { sessions?: Pa
     rememberPaperspaceTheme(next);
     setPsTheme(next);
   }, []);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [settingsFailed, setSettingsFailed] = useState(false);
 
@@ -351,11 +350,9 @@ export default function PaperspaceView({ sessions, workspaces }: { sessions?: Pa
               theme={psTheme}
               onThemeChange={changeTheme}
               onBack={() => navigate({ kind: 'list' })}
-              onOpenSettings={() => setSettingsOpen(true)}
               onDiscuss={() => void discuss(route.arxivId)}
             />
           )}
-          {settingsOpen && <ModelSettingsModal onClose={() => setSettingsOpen(false)} />}
         </>
       )}
     </div>

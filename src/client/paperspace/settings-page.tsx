@@ -12,8 +12,13 @@
  * mounted OUTSIDE the tab's own wrapper.
  */
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { settingsUrl } from './api';
+import { modelsUrl, settingsUrl } from './api';
 import TasksSettingsSection from '../tasks/settings-page';
+
+export interface TranslateModelSelection {
+  provider: string;
+  model: string;
+}
 
 export interface PaperspaceSettingsFile {
   version: number;
@@ -31,6 +36,7 @@ export interface PaperspaceSettingsFile {
   translateStuckAfterMinutes: number;
   translateTimeoutMs: number;
   rescanIntervalMs: number;
+  translateModel: TranslateModelSelection | null;
 }
 
 export interface SettingsView {
@@ -66,6 +72,13 @@ export interface SettingsInput {
   translateStuckAfterMinutes: number;
   translateTimeoutMs: number;
   rescanIntervalMs: number;
+  translateModel: TranslateModelSelection | null;
+}
+
+export interface DshModelDirectory {
+  available: boolean;
+  groups: Array<{ id: string; name: string; models: Array<{ id: string; name: string }> }>;
+  reason?: 'no-llm-service' | 'empty-directory';
 }
 
 export async function saveSettings(input: SettingsInput): Promise<{ ok: boolean; error?: string; restartRequired?: boolean }> {
@@ -124,9 +137,24 @@ function Field<K extends keyof SettingsInput>({ label, keyName, form, onChange, 
 export default function UnknownueSettingsPage() {
   const [view, setView] = useState<SettingsView | null>(null);
   const [form, setForm] = useState<SettingsInput | null>(null);
+  const [directory, setDirectory] = useState<DshModelDirectory>({ available: false, groups: [] });
+  const [directoryError, setDirectoryError] = useState('');
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const loadDirectory = useCallback(async () => {
+    setDirectoryError('');
+    try {
+      const response = await fetch(modelsUrl(), { cache: 'no-store' });
+      if (response.status === 404) throw new Error('主机路由尚未更新——请重启 dsh web 后重试');
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      setDirectory((await response.json()) as DshModelDirectory);
+    } catch (error) {
+      setDirectory({ available: false, groups: [] });
+      setDirectoryError(error instanceof Error ? error.message : '无法读取 DSH 模型目录');
+    }
+  }, []);
 
   const reload = useCallback(async () => {
     const next = await fetchSettings();
@@ -151,13 +179,15 @@ export default function UnknownueSettingsPage() {
       translateStuckAfterMinutes: base.translateStuckAfterMinutes,
       translateTimeoutMs: base.translateTimeoutMs,
       rescanIntervalMs: base.rescanIntervalMs,
+      translateModel: base.translateModel ?? null,
     });
     setErr('');
   }, []);
 
   useEffect(() => {
     void reload();
-  }, [reload]);
+    void loadDirectory();
+  }, [reload, loadDirectory]);
 
   if (!view || !form) {
     return (
@@ -232,6 +262,62 @@ export default function UnknownueSettingsPage() {
             <p className="settings-empty">
               配置文件：<code>{view.settingsPath}</code>（备份整个数据目录即可迁移书库）
             </p>
+          </div>
+
+          <div className="bundle-section-sub">
+            <h3>翻译模型</h3>
+            <p className="settings-empty">翻译使用 DSH 当前可用的模型；提供商与模型在 DSH 的模型设置中管理。</p>
+            {directoryError ? (
+              <p className="form-error">⚠ 无法读取 DSH 模型目录：{directoryError}</p>
+            ) : directory.groups.length === 0 ? (
+              <p className="settings-empty">
+                {directory.reason === 'no-llm-service'
+                  ? 'DSH llm 服务不可用——当前插件宿主未加载模型服务，无法读取模型列表。'
+                  : 'DSH 当前没有可用模型，请先在 DSH 中配置模型提供商。'}
+              </p>
+            ) : (
+              <>
+                <label className="ps-row">
+                  <span>提供商</span>
+                  <select
+                    value={form.translateModel?.provider ?? ''}
+                    onChange={event => {
+                      const group = directory.groups.find(item => item.id === event.target.value);
+                      const model = group?.models[0]?.id ?? '';
+                      set('translateModel', model ? { provider: event.target.value, model } : null);
+                    }}
+                  >
+                    <option value="">未选择</option>
+                    {directory.groups.map(group => (
+                      <option value={group.id} key={group.id}>
+                        {group.name}（{group.id}）
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="ps-row">
+                  <span>模型</span>
+                  <select
+                    value={form.translateModel?.model ?? ''}
+                    disabled={!form.translateModel?.provider}
+                    onChange={event => {
+                      const provider = form.translateModel?.provider ?? '';
+                      set('translateModel', event.target.value && provider ? { provider, model: event.target.value } : null);
+                    }}
+                  >
+                    <option value="">未选择</option>
+                    {(directory.groups.find(group => group.id === form.translateModel?.provider)?.models ?? []).map(model => (
+                      <option value={model.id} key={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button type="button" className="button compact ghost" onClick={() => void loadDirectory()}>
+                  刷新模型列表
+                </button>
+              </>
+            )}
           </div>
 
           <details className="ps-advanced">

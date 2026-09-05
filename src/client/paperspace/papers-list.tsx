@@ -112,12 +112,13 @@ export default function PapersList({
   }
 
   async function remove(paper: Paper) {
-    if (!confirm(`Delete ${paper.title} and its stored images?`)) return;
+    if (!confirm(`删除《${paper.title}》及其本地图片与译文？删除后可在列表中重新添加该论文以重建数据。`)) return;
     try {
-      await fetch(`${PAPERS_API}/papers/` + encodeURIComponent(paper.id), { method: 'DELETE' });
+      const response = await fetch(`${PAPERS_API}/papers/` + encodeURIComponent(paper.arxivId), { method: 'DELETE' });
+      if (!response.ok) throw new Error('API returned ' + response.status);
       await refresh();
-    } catch {
-      /* refresh will surface the error state */
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Failed to delete paper');
     }
   }
 
@@ -191,6 +192,9 @@ export default function PapersList({
                       </button>
                       <button type="button" className="text-button muted" onClick={() => onDiscuss(paper.arxivId)}>
                         与 AI 讨论
+                      </button>
+                      <button type="button" className="text-button muted" onClick={() => void remove(paper)}>
+                        删除
                       </button>
                     </>
                   )}

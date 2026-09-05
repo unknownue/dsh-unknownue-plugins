@@ -16,7 +16,7 @@
  *   - dispose → queries fail; data persists across a fresh runtime (reopen)
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -35,7 +35,8 @@ import { createSessionLinkRepo } from './domain/session-links';
 import { splitParagraphs, spliceParagraphs } from './domain/paragraphs';
 import { parseSse } from './runtime/index';
 import { extractImageUrls, rewriteImageUrls } from './worker/images';
-import { failTranslationJob, parseJsonObject, runTranslationJob } from './worker/translate';
+import { htmlToMarkdown } from './worker/html2md';
+import { failTranslationJob, parseJsonObject, protectMath, runTranslationJob, TranslationFatalError } from './worker/translate';
 import type { PaperspaceHostContext, WebRoute } from './types';
 
 const API = '/dsh-unknownue-plugins/paperspace/api';
@@ -78,6 +79,23 @@ const fakeWorkspaceRegistry = {
   },
 };
 
+/** Structural stand-in for DSH's `llm` service (directory + stream). */
+const fakeLlm = {
+  listProviders: () => [{ id: 'mock', name: 'Mock Provider' }],
+  listModels: async (provider?: string) => (provider === 'mock' ? [{ provider: 'mock', id: 'mock-1', name: 'Mock One' }] : []),
+  async *stream(options: { messages: Array<{ role: string; content: Array<{ type: 'text'; text: string }> }>; signal: AbortSignal }) {
+    const system = String(options.messages[0]?.content?.[0]?.text ?? '');
+    const user = String(options.messages.at(-1)?.content?.[0]?.text ?? '');
+    if (system.includes('terminology extractor')) {
+      yield { type: 'text-delta', index: 0, text: '{"transformer":"变换器"}' };
+    } else if (system.includes('academic-paper translator')) {
+      yield { type: 'reasoning-delta', index: 0, text: 'thinking…' };
+      yield { type: 'text-delta', index: 0, text: '[DSH] ' + (user.split('Paragraph:\n').pop() ?? '') };
+    }
+    yield { type: 'finish', reason: { kind: 'stop' } };
+  },
+};
+
 const mockCtx: PaperspaceHostContext = {
   effect(fn: () => unknown, _label?: string): unknown {
     const result = fn();
@@ -92,6 +110,7 @@ const mockCtx: PaperspaceHostContext = {
     if (name === 'sessions') return fakeSessions;
     if (name === 'sessionTitle') return fakeSessionTitle;
     if (name === 'workspaceRegistry') return fakeWorkspaceRegistry;
+    if (name === 'llm') return fakeLlm;
     if (name === 'tools') return { register: (definition: { name: string; execute: (args: unknown, exec: unknown) => Promise<unknown> }) => { registeredTools.push(definition); return () => undefined; } };
     return undefined;
   },
@@ -327,15 +346,33 @@ async function main(): Promise<void> {
     check('font route rejects non-font names', badFont.statusCode === 404);
 
     // ── translation REST flow ───────────────────────────────────────────────
+    const modelDirectory = await call('GET', `${API}/models`);
+    const modelDirectoryBody = JSON.parse(modelDirectory.body);
+    check('GET /models → DSH directory (mock llm)', modelDirectory.statusCode === 200 && modelDirectoryBody.available === true && modelDirectoryBody.groups[0]?.id === 'mock' && modelDirectoryBody.groups[0]?.models[0]?.id === 'mock-1');
+
     const noProvider = await call('POST', `${API}/papers/1706.03762/translate-paper`, { target_lang: 'zh-CN' });
-    check('POST translate without provider → 400', noProvider.statusCode === 400 && JSON.parse(noProvider.body).code === 'MODEL_NOT_CONFIGURED');
+    check('POST translate without settings model → 400', noProvider.statusCode === 400 && JSON.parse(noProvider.body).code === 'MODEL_NOT_CONFIGURED');
 
-    const started = await call('POST', `${API}/papers/1706.03762/translate-paper`, { target_lang: 'zh-CN', provider: { base_url: 'https://example.com/v1', api_key: 'sk-test', model: 'deepseek-chat' } });
+    const savedModel = await call('POST', `${API}/settings`, { configured: true, translateModel: { provider: 'mock', model: 'mock-1' } });
+    check('POST /settings with translateModel → 200', savedModel.statusCode === 200 && JSON.parse(savedModel.body).ok === true);
+
+    const started = await call('POST', `${API}/papers/1706.03762/translate-paper`, { target_lang: 'zh-CN' });
     const startedBody = JSON.parse(started.body);
-    check('POST translate-paper → 202 with job', started.statusCode === 202 && typeof startedBody.job.id === 'string');
+    check(
+      'POST translate-paper → 202 with settings-selected provider',
+      started.statusCode === 202 && startedBody.job.provider?.provider === 'mock' && startedBody.job.provider?.model === 'mock-1',
+    );
 
-    const activeAgain = await call('POST', `${API}/papers/1706.03762/translate-paper`, { target_lang: 'zh-CN', provider: { base_url: 'https://example.com/v1', api_key: 'sk-test', model: 'deepseek-chat' } });
+    const activeAgain = await call('POST', `${API}/papers/1706.03762/translate-paper`, { target_lang: 'zh-CN' });
     check('POST translate again returns active job', activeAgain.statusCode === 202 && JSON.parse(activeAgain.body).job.id === startedBody.job.id);
+
+    const unavailable = await call('POST', `${API}/settings`, { configured: true, translateModel: { provider: 'missing', model: 'mock-1' } });
+    const unavailableTranslate = await call('POST', `${API}/papers/1706.03762/translate-paper`, { target_lang: 'zh-CN' });
+    check(
+      'POST translate with unavailable provider → 400 MODEL_UNAVAILABLE',
+      unavailable.statusCode === 200 && unavailableTranslate.statusCode === 400 && JSON.parse(unavailableTranslate.body).code === 'MODEL_UNAVAILABLE',
+    );
+    await call('POST', `${API}/settings`, { configured: true, translateModel: { provider: 'mock', model: 'mock-1' } });
 
     const jobPoll = await call('GET', `${API}/papers/1706.03762/translation-job?lang=zh-CN`);
     check('GET translation-job', jobPoll.statusCode === 200 && JSON.parse(jobPoll.body).job.status === 'pending');
@@ -357,12 +394,17 @@ async function main(): Promise<void> {
     check('DSH tools registered (read_section + search_paper)', JSON.stringify(toolNames) === JSON.stringify(['read_section', 'search_paper']));
 
     // ── DELETE /papers/:ref ─────────────────────────────────────────────────
+    // Materialize a stale workspace md first so the cleanup path is exercised.
+    mkdirSync(join(config.workspaceDir, 'papers'), { recursive: true });
+    const staleMdFile = join(config.workspaceDir, 'papers', '1706.03762.md');
+    writeFileSync(staleMdFile, '# stale\n', 'utf8');
     const removed = await call('DELETE', `${API}/papers/1706.03762`);
     check('DELETE /papers → 204', removed.statusCode === 204);
     const afterDelete = await call('GET', `${API}/papers/1706.03762`);
     check('paper gone after delete', afterDelete.statusCode === 404);
     await assert.rejects(() => store.getObject('papers/1706.03762/abc1.png'));
     check('object gone after delete', true);
+    check('workspace paper md removed on delete', !existsSync(staleMdFile));
 
     // ── DSH tools: bound to the calling session ─────────────────────────────
     // Unbound session → note.
@@ -385,7 +427,6 @@ async function main(): Promise<void> {
     check('GET /sessions/:id returns linked paper', linkLookup.statusCode === 200 && JSON.parse(linkLookup.body).arxivId === '2101.00004' && JSON.parse(linkLookup.body).status === 'ready');
     const noLink = await call('GET', `${API}/sessions/no-such-session`);
     check('GET /sessions/:id unknown → 404', noLink.statusCode === 404 && JSON.parse(noLink.body).code === 'SESSION_NOT_LINKED');
-    const { existsSync } = await import('node:fs');
     check('paper.md materialized into workspace', existsSync(join(config.workspaceDir, 'papers', '2101.00004.md')));
     const grounded = (await searchTool.execute({ query: 'hello' }, { agent: { sessionId: 'sess-1' } })) as { passages: Array<{ passage: string }>; note: string };
     check('search_paper grounded in linked paper', grounded.passages.length === 1 && grounded.passages[0]?.passage.includes('hello world') === true);
@@ -422,13 +463,125 @@ async function main(): Promise<void> {
     const spliced = spliceParagraphs(markdown, blocks.map(b => ({ start: b.start, end: b.end })), [blocks[0].text.toUpperCase(), null]);
     check('paragraph split skips references + splice roundtrip', blocks.length === 2 && spliced.includes('HELLO WORLD.') && spliced.includes('skip me'));
 
+    // ── code blocks must never be translated ─────────────────────────────────
+    const mergedCodeMd = 'Para before code, no blank line:\n```python\nx = 1\nprint(x)\n```\nPara after code, no blank line.';
+    const mergedCodeBlocks = splitParagraphs(mergedCodeMd);
+    check(
+      'fenced code split from adjacent prose (no blank lines)',
+      mergedCodeBlocks.length === 2 &&
+        mergedCodeBlocks[0].text === 'Para before code, no blank line:' &&
+        mergedCodeBlocks[1].text === 'Para after code, no blank line.',
+    );
+    const mergedCodeSpliced = spliceParagraphs(mergedCodeMd, mergedCodeBlocks.map(b => ({ start: b.start, end: b.end })), ['[ZH] before', '[ZH] after']);
+    check(
+      'splice keeps merged fenced code verbatim',
+      mergedCodeSpliced === '[ZH] before\n```python\nx = 1\nprint(x)\n```\n[ZH] after',
+    );
+
+    const blankFenceMd = 'Before.\n\n```\ncode\n```\n\nAfter.';
+    const blankFenceBlocks = splitParagraphs(blankFenceMd);
+    check('blank-line fenced code still skipped', blankFenceBlocks.length === 2 && blankFenceBlocks[0].text === 'Before.' && blankFenceBlocks[1].text === 'After.');
+
+    const blankInsideMd = 'Code with blank line inside:\n```\nline1\n\nline2\n```\nAfter.';
+    const blankInsideBlocks = splitParagraphs(blankInsideMd);
+    check('fence with blank line inside stays one block', blankInsideBlocks.length === 2 && blankInsideBlocks[0].text === 'Code with blank line inside:' && blankInsideBlocks[1].text === 'After.');
+
+    const tildeMd = 'Before.\n~~~\ncode\n~~~\nAfter.';
+    const tildeBlocks = splitParagraphs(tildeMd);
+    check('tilde fence skipped', tildeBlocks.length === 2 && tildeBlocks[0].text === 'Before.' && tildeBlocks[1].text === 'After.');
+
+    const indentedMd = 'Text.\n\n    x = 1\n    print(x)\n\nMore text.';
+    const indentedBlocks = splitParagraphs(indentedMd);
+    check('indented code block skipped', indentedBlocks.length === 2 && indentedBlocks[0].text === 'Text.' && indentedBlocks[1].text === 'More text.');
+
+    const nestedListMd = '    - sub item\n    - sub item 2';
+    const nestedListBlocks = splitParagraphs(nestedListMd);
+    check('indented list continuation still translatable', nestedListBlocks.length === 1 && nestedListBlocks[0].text.includes('- sub item'));
+
+    // ── legacy arXiv listing artifacts must never be translated ─────────────
+    const legacyListingMd =
+      'Algorithm 1 ELF: training.\n\n' +
+      '[⬇](data:text/plain;base64,xyz)\n\n' +
+      'x \\= encode(s)\n\n' +
+      '# comment line\n\n' +
+      'Algorithm 2 ELF: inference.\n\n' +
+      '[⬇](data:text/plain;base64,abc)\n\n' +
+      'y \\= corrupt(x)\n\n' +
+      'The core concepts of ELF are summarized in a long prose paragraph that definitely exceeds two hundred and fifty characters so the listing region ends here and the prose gets translated normally, continuing on for a while longer still, with additional sentences appended to guarantee the length check passes reliably for this regression test case.';
+    const legacyListingBlocks = splitParagraphs(legacyListingMd);
+    check(
+      'legacy listing code lines skipped (captions + prose kept)',
+      legacyListingBlocks.length === 3 &&
+        legacyListingBlocks[0].text.includes('Algorithm 1') &&
+        legacyListingBlocks[1].text.includes('Algorithm 2') &&
+        legacyListingBlocks[2].text.includes('The core concepts'),
+    );
+
+    // ── ingestion: arXiv listings become fenced code blocks ─────────────────
+    const listingHtml =
+      '<main><section>' +
+      '<figure class="ltx_figure"><div class="ltx_flex_figure"><div class="ltx_flex_cell">' +
+      '<figure id="alg1" class="ltx_float ltx_figure_panel ltx_float_algorithm">' +
+      '<figcaption class="ltx_caption"><span class="ltx_tag ltx_tag_float">Algorithm 1</span> Train.<br class="ltx_break"><span>Note line.</span></figcaption>' +
+      '<div class="ltx_listing ltx_lst_language_PythonFuncColor ltx_lstlisting">' +
+      '<div class="ltx_listing_data"><a href="data:text/plain;base64,IyBjb21tZW50CnggPSAxCnlbaV0gPSAy" download="">⬇</a></div>' +
+      '<div class="ltx_listingline"># comment</div>' +
+      '<div class="ltx_listingline">x = 1</div>' +
+      '</div></figure></div></div></figure>' +
+      '<p>After paragraph.</p>' +
+      '</section></main>';
+    const listingMd = htmlToMarkdown(listingHtml);
+    check(
+      'html2md converts listings to fenced code (base64 decoded)',
+      listingMd.includes('Algorithm 1 Train.') &&
+        listingMd.includes('Note line.') &&
+        listingMd.includes('```python\n# comment\nx = 1\ny[i] = 2\n```') &&
+        !listingMd.includes('data:text/plain;base64') &&
+        listingMd.includes('After paragraph.'),
+    );
+    const listingBlocks = splitParagraphs(listingMd);
+    check('fenced listing is skipped by the splitter', listingBlocks.length === 2 && listingBlocks.every(b => !b.text.includes('# comment')));
+
+    // ── ingestion: vector figures (<object data>) must survive ──────────────
+    const objectHtml =
+      '<main><figure class="ltx_figure">' +
+      '<figcaption class="ltx_caption"><span class="ltx_tag ltx_tag_figure">Figure X</span>: A plot.</figcaption>' +
+      '<div class="ltx_block ltx_figure_panel"><object type="image/svg+xml" data="2605.10938v2/system_teaser.svg" width="229" height="87"></object></div>' +
+      '</figure></main>';
+    const objectMd = htmlToMarkdown(objectHtml);
+    check(
+      'html2md converts <object data> vector figures to markdown images',
+      objectMd.includes('![Refer to caption](2605.10938v2/system_teaser.svg)') && objectMd.includes('Figure X: A plot.'),
+    );
+
     const imgUrls = extractImageUrls('![a](https://x/a.png) and <img src="/rel/b.jpg"> and ![d](data:image/png;base64,xx)');
     check('extractImageUrls (skips data:)', imgUrls.length === 2);
     const rewritten = rewriteImageUrls('![a](rel/a.png)', new Map([['https://x/base/rel/a.png', '/local/a.png']]), 'https://x/base/');
     check('rewriteImageUrls resolves relative', rewritten.includes('/local/a.png'));
+    const rewrittenFallback = rewriteImageUrls('![a](rel/a.png) ![b](miss/x.png) ![d](data:image/png;base64,xx)', new Map([['https://x/base/rel/a.png', '/local/a.png']]), 'https://x/base/');
+    check(
+      'rewriteImageUrls: unstored relative → absolute, data: untouched',
+      rewrittenFallback.includes('/local/a.png') &&
+        rewrittenFallback.includes('https://x/base/miss/x.png') &&
+        rewrittenFallback.includes('data:image/png;base64,xx'),
+    );
 
     const glossary = parseJsonObject('Here it is:\n```json\n{"attention": "注意力"}\n```');
     check('parseJsonObject strips fences', glossary?.attention === '注意力');
+
+    // ── math protection: formulas must survive translation byte-for-byte ─────
+    const mathMd = 'The loss is $L = \\sum_{i} (y_i - \\hat{y}_i)^2$ and the bound is $$\\|x\\|_2 \\le C$$ for <b>any</b> `input` here.';
+    const protectedSpan = protectMath(mathMd);
+    check('protectMath removes raw math from the protected text', !protectedSpan.protected.includes('\\sum') && !protectedSpan.protected.includes('$$') && !protectedSpan.protected.includes('<b>'));
+    const restored = protectedSpan.restore(protectedSpan.protected);
+    check('protectMath restore roundtrips exactly', restored === mathMd);
+    // A "model" that translates prose but copies placeholders verbatim keeps formulas intact.
+    const modelReply = protectedSpan.protected.replace('The loss is', '损失为').replace('and the bound is', '且上界为');
+    const outAfterTranslate = protectedSpan.restore(modelReply);
+    check('math survives a prose translation', outAfterTranslate.includes('$L = \\sum_{i} (y_i - \\hat{y}_i)^2$') && outAfterTranslate.includes('$$\\|x\\|_2 \\le C$$') && outAfterTranslate.includes('<b>any</b>') && outAfterTranslate.includes('`input`') && outAfterTranslate.startsWith('损失为'));
+    // No math → protect is a no-op and restore is the identity.
+    const noMath = protectMath('Just plain prose.');
+    check('protectMath is identity when no spans', noMath.protected === 'Just plain prose.' && noMath.restore('Just plain prose.') === 'Just plain prose.');
 
     // ── e2e against a mock OpenAI-compatible server ─────────────────────────
     const mock = await startMockLlm();
@@ -493,6 +646,39 @@ async function main(): Promise<void> {
       await mock.close();
     }
 
+    // ── DSH-route translation (settings-driven model executed via ctx.llm) ──
+    const dshProvider = { provider: 'mock', model: 'mock-1' };
+    const paperD = await papers.insert('2101.00006');
+    const mdD = '# T\n\nDSH paragraph one.\n\n## M\n\nDSH paragraph two.';
+    await papers.finishReady(paperD.id, { title: 'D', authors: [], categories: [], abstract: null, published: null }, mdD);
+    const jobD = await translations.createJob(paperD.id, 'zh-CN', dshProvider);
+    const claimedD = await translations.claimNextJob();
+    assert.ok(claimedD, 'DSH-route translation job claimed');
+    await runTranslationJob(claimedD, mdD, { translations, provider: dshProvider, llm: fakeLlm, timeoutMs: 10000, maxAttempts: 3 });
+    const snapD = await translations.findSnapshot(paperD.id, 'zh-CN');
+    check(
+      'DSH-route translation e2e (llm stream, reasoning deltas ignored)',
+      snapD?.status === 'completed' &&
+        snapD.paragraphs?.[0] === '[DSH] DSH paragraph one.' &&
+        snapD.paragraphs?.[1] === '[DSH] DSH paragraph two.' &&
+        snapD.glossary.transformer === '变换器',
+    );
+
+    const paperE = await papers.insert('2101.00007');
+    await papers.finishReady(paperE.id, { title: 'E', authors: [], categories: [], abstract: null, published: null }, '# T\n\nP1.');
+    const jobE = await translations.createJob(paperE.id, 'zh-CN', dshProvider);
+    const claimedE = await translations.claimNextJob();
+    assert.ok(claimedE, 'DSH-route job claimed (no llm case)');
+    let fatal: unknown = null;
+    try {
+      await runTranslationJob(claimedE, '# T\n\nP1.', { translations, provider: dshProvider, llm: null, timeoutMs: 1000, maxAttempts: 3 });
+    } catch (error) {
+      fatal = error;
+    }
+    check('DSH-route job without llm service → fatal error', fatal instanceof TranslationFatalError);
+    if (fatal) await failTranslationJob(claimedE, fatal, { translations, provider: dshProvider, llm: null, timeoutMs: 1000, maxAttempts: 3 });
+    check('DSH-route fatal stays failed (no retry)', (await translations.findLatestJob(paperE.id, 'zh-CN'))?.status === 'failed');
+
     // ── settings: path change requires restart; disable gates again ─────────
     const movedRes = await call('POST', `${API}/settings`, { configured: true, dataDir: join(root, 'moved-db'), assetsDir: join(root, 'moved-assets') });
     const movedBody = JSON.parse(movedRes.body);
@@ -514,7 +700,7 @@ async function main(): Promise<void> {
     const active2 = await host.ensureStarted();
     const sql2 = await active2.runtime.getSql();
     const count = await sql2<Array<{ n: number }>>`SELECT count(*)::int AS n FROM paper.papers`;
-    check('re-enable persists data (6 papers)', count[0].n === 6);
+    check('re-enable persists data (8 papers)', count[0].n === 8);
 
     // ── dispose ──────────────────────────────────────────────────────────────
     active2.runtime.dispose();

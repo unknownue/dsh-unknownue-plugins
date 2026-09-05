@@ -105,10 +105,13 @@ export async function storeImages(params: {
 /**
  * Rewrite image references in the markdown to app-local asset URLs.
  * `urlMap` maps absolute URLs to local URLs; relative references are resolved
- * against `baseUrl` before lookup.
+ * against `baseUrl` before lookup. When an image was not stored (download
+ * failure, non-image, over size limit), the reference is instead rewritten to
+ * its ABSOLUTE source URL — otherwise a relative src would resolve against
+ * the reader page URL and render as a broken "current page" link.
  */
 export function rewriteImageUrls(markdown: string, urlMap: Map<string, string>, baseUrl: string): string {
-  const lookup = (url: string): string | undefined => {
+  const targetOf = (url: string): string | undefined => {
     const direct = urlMap.get(url);
     if (direct) return direct;
     try {
@@ -117,16 +120,20 @@ export function rewriteImageUrls(markdown: string, urlMap: Map<string, string>, 
       return undefined;
     }
   };
-  const rewritten = markdown
-    .replace(MD_IMG_RE, (full, url: string) => {
-      const target = lookup(url);
-      return target ? full.replace(url, target) : full;
-    })
-    .replace(HTML_IMG_RE, (full, url: string) => {
-      const target = lookup(url);
-      return target ? full.replace(url, target) : full;
-    });
-  return rewritten;
+  const rewrite = (full: string, url: string): string => {
+    const target = targetOf(url);
+    if (target) return full.replace(url, target);
+    try {
+      const absolute = new URL(url, baseUrl).href;
+      if (absolute !== url) return full.replace(url, absolute);
+    } catch {
+      /* leave the reference as-is */
+    }
+    return full;
+  };
+  return markdown
+    .replace(MD_IMG_RE, (full, url: string) => rewrite(full, url))
+    .replace(HTML_IMG_RE, (full, url: string) => rewrite(full, url));
 }
 
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {

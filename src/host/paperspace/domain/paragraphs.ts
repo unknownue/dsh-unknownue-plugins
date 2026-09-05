@@ -19,7 +19,13 @@
  * the browser bundle free of this module.
  *
  * Skipped (never translated):
- * - headings (`# …`), horizontal rules, fenced code blocks,
+ * - headings (`# …`), horizontal rules,
+ * - fenced code blocks (` ``` ` / `~~~`) — split out even when the adjacent
+ *   prose has no blank line between it and the fence,
+ * - indented code blocks (4+ spaces / tab per line),
+ * - legacy listing artifacts (arXiv listing download-link blocks and the
+ *   single-line code blocks that follow them, until the next caption or
+ *   long prose block),
  * - display-math blocks (`$$…$$`),
  * - paragraphs whose only content is an image,
  * - raw HTML blocks, and the `<table>…</table>` portion of mixed blocks
@@ -42,19 +48,38 @@ const REFERENCES_HEADING_RE = /^\s*(?:(?:references?|bibliography)\b|参考文�
 const IMAGE_ONLY_RE = /^!\[[^\]]*\]\([^)]*\)$/;
 const HORIZONTAL_RULE_RE = /^(?:---+|\*\*\*+)\s*$/;
 const HTML_TABLE_START_RE = /<table\b/i;
+// Legacy listing artifacts (ingested before html2md converted arXiv
+// listings to fenced code blocks): the base64 download-link block, followed
+// by one-line code blocks, ending at the next caption/heading/prose block.
+const LISTING_LINK_RE = /^\[⬇\]\(data:text\/[^)]*\)$/;
+const LISTING_CAPTION_RE = /^(?:Algorithm|Table|Figure|Alg\.?|Listing|Pseudocode)\s/i;
 
 export function splitParagraphs(markdown: string): ParagraphBlock[] {
   const blocks = groupBlocks(markdown);
   const paragraphs: ParagraphBlock[] = [];
   let inReferences = false;
+  let inLegacyListing = false;
   let index = 0;
 
   for (const block of blocks) {
     const firstLine = block.text.split('\n', 1)[0].trim();
 
-    // Fenced code blocks arrive as one grouped block (groupBlocks never
-    // splits inside a fence); skip them wholesale.
-    if (firstLine.startsWith('```')) continue;
+    // Fenced code blocks arrive as one grouped block (groupBlocks ends a
+    // block at every fence boundary); skip them wholesale.
+    if (/^(```|~~~)/.test(firstLine)) continue;
+
+    // Legacy listing region: single-line code blocks between the download
+    // link and the next caption / prose are verbatim, not prose.
+    if (inLegacyListing) {
+      if (LISTING_LINK_RE.test(block.text.trim())) continue;
+      const multiline = block.text.includes('\n');
+      const caption = LISTING_CAPTION_RE.test(firstLine);
+      const longProse = block.text.trim().length > 250;
+      // Everything else — including `#` comment lines, which would otherwise
+      // be misread as headings — is a code line: never translated.
+      if (multiline || caption || longProse) inLegacyListing = false;
+      else continue;
+    }
 
     // H1/H2 headings toggle the references gate; H3+ inherit it.
     const heading = block.text.match(/^(#{1,6})\s+(.*)$/);
@@ -66,6 +91,18 @@ export function splitParagraphs(markdown: string): ParagraphBlock[] {
     if (inReferences) continue;
     if (HORIZONTAL_RULE_RE.test(block.text)) continue;
     if (/^\$\$/.test(block.text)) continue;
+
+    // Legacy listing download link starts a listing region; never translate it.
+    if (LISTING_LINK_RE.test(block.text.trim())) {
+      inLegacyListing = true;
+      continue;
+    }
+
+    // Indented code (4+ spaces / tab on every line) is verbatim, not prose.
+    // Lines that look like indented list items are exempt, so a nested-list
+    // continuation is still translated.
+    const rawLines = block.text.split('\n');
+    if (rawLines.length > 0 && rawLines.every(line => /^(?: {4,}|\t)/.test(line) && !/^(?: {4,}|\t)(?:[-*+]|\d+[.)])\s/.test(line))) continue;
 
     const trimmed = block.text.trim();
     if (!trimmed) continue;
@@ -122,7 +159,10 @@ interface RawBlock {
 
 /**
  * Group consecutive non-blank lines into blocks, tracking character offsets.
- * Blank lines inside fenced code blocks do not split the block.
+ * Blank lines inside fenced code blocks do not split the block, and a fence
+ * line is always a block boundary: prose directly abutting a code block
+ * (no blank line) becomes its own block instead of dragging the code into a
+ * paragraph the translator would translate.
  */
 function groupBlocks(markdown: string): RawBlock[] {
   const blocks: RawBlock[] = [];
@@ -138,20 +178,45 @@ function groupBlocks(markdown: string): RawBlock[] {
       blocks.push({ start: blockStart, end: blockEnd, text: blockLines.join('\n') });
       blockLines = [];
       blockStart = -1;
+      blockEnd = -1;
     }
   };
 
-  for (let i = 0; i <= lines.length; i++) {
-    const line = i < lines.length ? lines[i] : '';
-    if (blockLines.length === 0 && line.trimStart().startsWith('```')) inFence = !inFence;
-    const blank = line.trim() === '';
-    if (!blank || inFence) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // A fence may be indented (nested in a list), matching how the previous
+    // implementation detected fences with trimStart().
+    if (/^\s*(?:```|~~~)/.test(line)) {
+      if (!inFence) {
+        // Opening fence: close the prose block before it, start the code block.
+        flush();
+        inFence = true;
+        blockStart = lineStart;
+        blockEnd = lineStart + line.length;
+        blockLines = [line];
+      } else {
+        // Closing fence: end the code block (its blank lines stayed intact).
+        blockLines.push(line);
+        blockEnd = lineStart + line.length;
+        flush();
+        inFence = false;
+      }
+      lineStart += line.length + 1;
+      continue;
+    }
+    if (inFence) {
+      // Fence content: blank lines do not end the block.
+      blockLines.push(line);
+      blockEnd = lineStart + line.length;
+      lineStart += line.length + 1;
+      continue;
+    }
+    if (line.trim() === '') {
+      flush();
+    } else {
       if (blockStart < 0) blockStart = lineStart;
       blockEnd = lineStart + line.length;
       blockLines.push(line);
-      if (line.trimStart().startsWith('```') && blockLines.length > 1) inFence = !inFence;
-    } else {
-      flush();
     }
     lineStart += line.length + 1;
   }

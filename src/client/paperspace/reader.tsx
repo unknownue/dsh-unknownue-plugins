@@ -4,9 +4,9 @@
  * Chat moved into DSH's native conversation (「与 AI 讨论」button).
  */
 import GithubSlugger from 'github-slugger';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { paperUrl } from './api';
-import { ModelSelectionProvider } from './model-selection';
+import { DEFAULT_FONT_SIZE, FONT_SIZE_STEP, MAX_FONT_SIZE, MIN_FONT_SIZE, readPaperspaceFontSize, rememberPaperspaceFontSize } from './font-size';
 import ThemeSwitch from './theme-switch';
 import type { PaperspaceTheme } from './theme';
 import TranslationPanel, { type InitialTranslation } from './translation-panel';
@@ -29,26 +29,199 @@ function buildToc(markdown: string) {
   return headings;
 }
 
+/** The element that actually scrolls is not necessarily `.reader-main` (DSH
+ *  may scroll its own outer scrollport), so walk up and collect every
+ *  scrollable ancestor, plus the document's scrolling element. */
+function scrollContainers(main: HTMLElement | null): HTMLElement[] {
+  const list: HTMLElement[] = [];
+  let node: HTMLElement | null = main;
+  while (node) {
+    const { overflowY } = getComputedStyle(node);
+    if (overflowY === 'auto' || overflowY === 'scroll') list.push(node);
+    node = node.parentElement;
+  }
+  const root = document.scrollingElement as HTMLElement | null;
+  if (root && !list.includes(root)) list.push(root);
+  return list;
+}
+
 export default function Reader({
   arxivId,
   theme,
   onThemeChange,
   onBack,
-  onOpenSettings,
   onDiscuss,
 }: {
   arxivId: string;
   theme: PaperspaceTheme;
   onThemeChange: (next: PaperspaceTheme) => void;
   onBack: () => void;
-  onOpenSettings: () => void;
   onDiscuss: () => void;
 }) {
   const [paper, setPaper] = useState<PaperDetail | null>(null);
   const [error, setError] = useState('');
   const [initialTranslation, setInitialTranslation] = useState<InitialTranslation>(null);
   const [initialMode] = useState<'original' | 'translated' | 'bilingual'>('original');
+  const [removing, setRemoving] = useState(false);
+  const [fontSize, setFontSize] = useState<number>(readPaperspaceFontSize);
+  const [tocOpen, setTocOpen] = useState(false);
+  const [activeSlug, setActiveSlug] = useState('');
+  const jumpEnterTimer = useRef<number | undefined>(undefined);
+  const jumpLeaveTimer = useRef<number | undefined>(undefined);
   const mainRef = useRef<HTMLElement | null>(null);
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const [jumpInset, setJumpInset] = useState(12);
+  const [jumpBottom, setJumpBottom] = useState(24);
+  const [showTopButton, setShowTopButton] = useState(false);
+
+  const toc = paper ? buildToc(paper.markdown) : [];
+
+  // The section-jump control is position:fixed (floats above the article,
+  // never scrolls with it), but its horizontal anchor must track the PAPER
+  // TAB's right edge rather than the DSH page's: measure the reader shell's
+  // bounds and offset the control by (viewportWidth - shellRight). The
+  // bottom-right back-to-top button is anchored the same way vertically.
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const shell = shellRef.current;
+      if (!shell) return;
+      const rect = shell.getBoundingClientRect();
+      setJumpInset(Math.max(12, window.innerWidth - rect.right + 12));
+      // Anchor the bottom-right button to the ACTUAL scrollport of the tab
+      // (the scrollable that can really scroll), so it sits above DSH's
+      // composer instead of the raw viewport bottom.
+      const scroller =
+        scrollContainers(mainRef.current).find(el => el.scrollHeight > el.clientHeight) ?? document.scrollingElement;
+      const scrollerRect = (scroller as HTMLElement | null)?.getBoundingClientRect();
+      const visibleBottom = Math.min(scrollerRect?.bottom ?? window.innerHeight, window.innerHeight);
+      setJumpBottom(Math.max(24, window.innerHeight - visibleBottom + 24));
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    const observer = new ResizeObserver(update);
+    if (shellRef.current) observer.observe(shellRef.current);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', onScroll, true);
+      if (raf) cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [paper]);
+
+  // Show the back-to-top button once the paper is scrolled a bit.
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const scrollers = scrollContainers(mainRef.current);
+      setShowTopButton(scrollers.some(el => el.scrollTop > 320));
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    update();
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [paper]);
+
+  const scrollToTop = useCallback(() => {
+    for (const el of scrollContainers(mainRef.current)) {
+      try {
+        el.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch {
+        el.scrollTop = 0;
+      }
+    }
+  }, []);
+
+  const changeFontSize = useCallback((delta: number) => {
+    setFontSize(previous => {
+      const next = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, previous + delta));
+      rememberPaperspaceFontSize(next);
+      return next;
+    });
+  }, []);
+
+  // Hover on the top-right hotspot expands the section picker; leaving both
+  // the hotspot and the panel collapses it again (short delays avoid flicker).
+  const openJump = useCallback(() => {
+    window.clearTimeout(jumpLeaveTimer.current);
+    jumpEnterTimer.current = window.setTimeout(() => setTocOpen(true), 80);
+  }, []);
+
+  const closeJump = useCallback(() => {
+    window.clearTimeout(jumpEnterTimer.current);
+    jumpLeaveTimer.current = window.setTimeout(() => setTocOpen(false), 200);
+  }, []);
+
+  const jumpTo = useCallback((slug: string) => {
+    setTocOpen(false);
+    document.getElementById(slug)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  // Close on Escape while the picker is open.
+  useEffect(() => {
+    if (!tocOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setTocOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tocOpen]);
+
+  // Track the section currently in view (headings above the top band).
+  useEffect(() => {
+    if (toc.length === 0) return;
+    let raf = 0;
+    const compute = () => {
+      raf = 0;
+      let active = '';
+      for (const item of toc) {
+        const el = document.getElementById(item.slug);
+        if (!el) continue;
+        if (el.getBoundingClientRect().top <= 140) active = item.slug;
+        else break; // headings are in document order
+      }
+      setActiveSlug(active);
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(compute);
+    };
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    compute();
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [toc]);
+
+  async function removePaper() {
+    if (!paper) return;
+    if (!confirm(`删除《${paper.title}》及其本地图片与译文？删除后可在列表中重新添加该论文以重建数据。`)) return;
+    setRemoving(true);
+    try {
+      const response = await fetch(paperUrl(arxivId), { method: 'DELETE' });
+      if (!response.ok) {
+        setError('删除失败 (HTTP ' + response.status + ')');
+        return;
+      }
+      scrollOffsets.delete(arxivId);
+      onBack();
+    } catch (cause) {
+      setError('删除失败：' + (cause instanceof Error ? cause.message : String(cause)));
+    } finally {
+      setRemoving(false);
+    }
+  }
 
   // Restore the reader's scroll position. The element that actually scrolls
   // is NOT necessarily `.reader-main`: DSH's conversation layout puts the view
@@ -160,14 +333,11 @@ export default function Reader({
     );
   }
 
-  const toc = buildToc(paper.markdown);
-
   return (
-    <ModelSelectionProvider>
-      <div className="reader-shell">
-        <button className="toc-trigger" type="button" aria-label="Show contents">
-          ☰
-        </button>
+    <div className="reader-shell" ref={shellRef} style={{ '--ps-article-font-size': fontSize + 'px' } as CSSProperties}>
+      <button className="toc-trigger" type="button" aria-label="Show contents">
+        ☰
+      </button>
         <aside className="reader-toc">
           <p>CONTENTS</p>
           {toc.length === 0 && <a>No headings</a>}
@@ -178,6 +348,54 @@ export default function Reader({
           ))}
         </aside>
         <main className="reader-main" ref={mainRef}>
+          {/* Fixed (floating) above the article: never scrolls with the
+              paper; its `right` offset tracks the tab's right edge so it
+              stays inside the 论文 tab, not the DSH page corner. */}
+          <div className="section-jump" style={{ right: jumpInset + 'px' }} onMouseEnter={openJump} onMouseLeave={closeJump}>
+            <button
+              type="button"
+              className="section-jump-trigger"
+              onClick={() => setTocOpen(open => !open)}
+              aria-expanded={tocOpen}
+              aria-haspopup="true"
+              aria-label="章节跳转"
+            >
+              <span aria-hidden="true">☰</span> 章节 <span className="section-jump-caret" aria-hidden="true">▾</span>
+            </button>
+            {tocOpen && (
+              <nav className="section-jump-panel" aria-label="章节列表">
+                {toc.length === 0 ? (
+                  <p className="section-jump-empty">暂无章节</p>
+                ) : (
+                  toc.map(item => (
+                    <a
+                      key={item.slug}
+                      href={'#' + item.slug}
+                      className={'jump-level-' + item.level + (item.slug === activeSlug ? ' active' : '')}
+                      onClick={event => {
+                        event.preventDefault();
+                        jumpTo(item.slug);
+                      }}
+                    >
+                      {item.text}
+                    </a>
+                  ))
+                )}
+              </nav>
+            )}
+          </div>
+          {showTopButton && (
+            <button
+              type="button"
+              className="back-to-top"
+              style={{ right: jumpInset + 'px', bottom: jumpBottom + 'px' }}
+              onClick={scrollToTop}
+              aria-label="回到顶部"
+              title="回到顶部"
+            >
+              ↑
+            </button>
+          )}
           <header className="paper-header">
             <button type="button" className="back-link" onClick={onBack}>
               ← Back to papers
@@ -194,21 +412,36 @@ export default function Reader({
                 ))}
               </div>
               <div>
+                <div className="font-size-control" role="group" aria-label="正文字体大小">
+                  <button type="button" className="font-size-button" onClick={() => changeFontSize(-FONT_SIZE_STEP)} disabled={fontSize <= MIN_FONT_SIZE} aria-label="减小字号">
+                    A−
+                  </button>
+                  <span
+                    className="font-size-value"
+                    title="正文字体大小（px），点击恢复默认"
+                    onClick={() => changeFontSize(DEFAULT_FONT_SIZE - fontSize)}
+                  >
+                    {fontSize}
+                  </span>
+                  <button type="button" className="font-size-button" onClick={() => changeFontSize(FONT_SIZE_STEP)} disabled={fontSize >= MAX_FONT_SIZE} aria-label="增大字号">
+                    A+
+                  </button>
+                </div>
                 <ThemeSwitch value={theme} onChange={onThemeChange} />
                 {paper.status === 'ready' && (
                   <button className="button compact primary" onClick={onDiscuss}>
                     与 AI 讨论
                   </button>
                 )}
-                <button className="button compact ghost" onClick={onOpenSettings} title="模型设置">
-                  ⚙ 模型
-                </button>
                 <a className="button compact ghost" href={'https://arxiv.org/abs/' + paper.arxivId} target="_blank" rel="noreferrer">
                   ↗ arXiv
                 </a>
                 <a className="button compact ghost" href={'https://arxiv.org/pdf/' + paper.arxivId} target="_blank" rel="noreferrer">
                   PDF
                 </a>
+                <button type="button" className="button compact danger" onClick={() => void removePaper()} disabled={removing}>
+                  {removing ? '删除中…' : '删除论文'}
+                </button>
               </div>
             </div>
             {paper.publishedAt && <p className="paper-published">Published: {paper.publishedAt}</p>}
@@ -228,6 +461,5 @@ export default function Reader({
           )}
         </main>
       </div>
-    </ModelSelectionProvider>
   );
 }
