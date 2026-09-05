@@ -145,6 +145,7 @@ export default function TasksView({ t }: TasksViewProps) {
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<TaskCard | 'new' | null>(null);
+  const [archivingAll, setArchivingAll] = useState(false);
   const revisionRef = useRef(-1);
 
   const refresh = useCallback(async (includeArchived?: boolean) => {
@@ -207,6 +208,23 @@ export default function TasksView({ t }: TasksViewProps) {
     [refresh],
   );
 
+  /** One-click archive of every card in the Done column (confirm-guarded). */
+  const archiveAllDone = useCallback(
+    async (cards: TaskCard[]) => {
+      if (!window.confirm(t('board.archiveAllConfirm').replace('{n}', String(cards.length)))) return;
+      setArchivingAll(true);
+      try {
+        await Promise.all(cards.map(card => archiveCard(card.id)));
+        await refresh();
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setArchivingAll(false);
+      }
+    },
+    [refresh, t],
+  );
+
   const archivedCount = board.filter(card => card.archived).length;
   const visible = mode === 'board' ? board.filter(card => !card.archived) : board;
   /** Every tag already in use on the board, for the editor's quick-add row. */
@@ -265,7 +283,20 @@ export default function TasksView({ t }: TasksViewProps) {
               >
                 <header className="tk-col-head">
                   <span>{t(`status.${status}`)}</span>
-                  <span className="tk-count">{cards.length}</span>
+                  <div className="tk-col-head-right">
+                    {status === 'done' && cards.length > 0 && (
+                      <button
+                        type="button"
+                        className="tk-col-archive"
+                        disabled={archivingAll}
+                        title={t('board.archiveAll')}
+                        onClick={() => void archiveAllDone(cards)}
+                      >
+                        {archivingAll ? '…' : t('board.archiveAll')}
+                      </button>
+                    )}
+                    <span className="tk-count">{cards.length}</span>
+                  </div>
                 </header>
                 <div className="tk-col-body">
                   {cards.map(card => (

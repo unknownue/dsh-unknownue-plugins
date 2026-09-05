@@ -154,6 +154,33 @@
   line-height: 18px;
 }
 
+.dsh-tasks .tk-col-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dsh-tasks .tk-col-archive {
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.dsh-tasks .tk-col-archive:hover {
+  border-color: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dsh-tasks .tk-col-archive:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .dsh-tasks .tk-col-body {
   flex: 1;
   min-height: 0;
