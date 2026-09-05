@@ -64,6 +64,7 @@ const zh: Record<string, string> = {
   'todos.remove': '删除子任务',
   'tags.title': '标签',
   'tags.addPlaceholder': '新增标签，回车添加',
+  'tags.suggestions': '已有标签：',
   'tags.remove': '移除标签',
 };
 
@@ -121,6 +122,7 @@ const en: Record<string, string> = {
   'todos.remove': 'Remove subtask',
   'tags.title': 'Tags',
   'tags.addPlaceholder': 'Add a tag and press Enter',
+  'tags.suggestions': 'Existing tags:',
   'tags.remove': 'Remove tag',
 };
 

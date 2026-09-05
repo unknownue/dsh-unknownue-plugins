@@ -7,7 +7,7 @@
  * is no agent interaction. Freshness is revision polling (refetch only when
  * the host's `meta.revision` moved).
  */
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import React from 'react';
 import {
   TASK_STATUSES,
@@ -104,18 +104,38 @@ function sortTodosUncheckedFirst(items: readonly TaskTodo[]): TaskTodo[] {
   return [...items].sort((a, b) => Number(a.done) - Number(b.done));
 }
 
-/** Deterministic "random-looking" hue per tag name (stable across renders). */
-function tagHue(name: string): number {
+/**
+ * Fixed tag palette: white text stays readable on every entry in both light
+ * and dark themes. The text hash picks an index, so one tag name always gets
+ * the same color without any stored color data.
+ */
+const TAG_PALETTE = [
+  '#ef4444', // red
+  '#f97316', // orange
+  '#f59e0b', // amber
+  '#65a30d', // lime
+  '#22c55e', // green
+  '#14b8a6', // teal
+  '#06b6d4', // cyan
+  '#3b82f6', // blue
+  '#6366f1', // indigo
+  '#8b5cf6', // violet
+  '#d946ef', // fuchsia
+  '#ec4899', // pink
+] as const;
+
+/** Stable hash of the tag text (same value every render/session). */
+function tagHash(name: string): number {
   let hash = 0;
   for (const character of name) {
     hash = (hash * 31 + (character.codePointAt(0) ?? 0)) | 0;
   }
-  return Math.abs(hash) % 360;
+  return Math.abs(hash);
 }
 
-/** Tag chip inline style: white text on the name-derived hue. */
+/** Tag chip inline style: text hash → fixed palette entry. */
 function tagStyle(name: string): { backgroundColor: string } {
-  return { backgroundColor: `hsl(${tagHue(name)} 62% 42%)` };
+  return { backgroundColor: TAG_PALETTE[tagHash(name) % TAG_PALETTE.length] };
 }
 
 export default function TasksView({ t }: TasksViewProps) {
@@ -189,6 +209,8 @@ export default function TasksView({ t }: TasksViewProps) {
 
   const archivedCount = board.filter(card => card.archived).length;
   const visible = mode === 'board' ? board.filter(card => !card.archived) : board;
+  /** Every tag already in use on the board, for the editor's quick-add row. */
+  const knownTags = useMemo(() => [...new Set(board.flatMap(card => card.tags))].sort((a, b) => a.localeCompare(b)), [board]);
 
   return (
     <div className="dsh-tasks">
@@ -374,6 +396,7 @@ export default function TasksView({ t }: TasksViewProps) {
           key={editing === 'new' ? 'new' : editing.id}
           card={editing}
           t={t}
+          knownTags={knownTags}
           onClose={() => setEditing(null)}
           onSaved={async includeArchived => {
             setEditing(null);
@@ -391,12 +414,14 @@ export default function TasksView({ t }: TasksViewProps) {
 interface CardEditorProps {
   card: TaskCard | 'new';
   t: TasksLocale;
+  /** Tags already used across the board (quick-add suggestions). */
+  knownTags: string[];
   onClose(): void;
   onSaved(includeArchived: boolean): Promise<void>;
   onError(message: string): void;
 }
 
-function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
+function CardEditor({ card, t, knownTags, onClose, onSaved, onError }: CardEditorProps) {
   const existing = card === 'new' ? null : card;
   const [title, setTitle] = useState(existing?.title ?? '');
   const [body, setBody] = useState(existing?.body ?? '');
@@ -432,6 +457,8 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
 
   // Display order: unchecked first (handlers operate on the same view order).
   const sortedTodos = sortTodosUncheckedFirst(todos);
+  /** Known tags not yet on this card, offered as quick-add chips. */
+  const suggestedTags = knownTags.filter(tag => !tags.includes(tag));
 
   function toggleDraftTodo(index: number) {
     setTodos(sortTodosUncheckedFirst(sortedTodos.map((item, i) => (i === index ? { ...item, done: !item.done } : item))));
@@ -454,6 +481,11 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
 
   function removeTag(index: number) {
     setTags(tags.filter((_, i) => i !== index));
+  }
+
+  function addExistingTag(tag: string) {
+    if (tags.includes(tag) || tags.length >= 20) return;
+    setTags([...tags, tag]);
   }
 
   async function save(event: FormEvent) {
@@ -592,6 +624,16 @@ function CardEditor({ card, t, onClose, onSaved, onError }: CardEditorProps) {
                 </li>
               ))}
             </ul>
+          )}
+          {suggestedTags.length > 0 && (
+            <div className="tk-tag-suggest">
+              <span className="tk-tag-suggest-label">{t('tags.suggestions')}</span>
+              {suggestedTags.map(tag => (
+                <button type="button" key={tag} className="tk-tag tk-tag-suggest-chip" style={tagStyle(tag)} onClick={() => addExistingTag(tag)}>
+                  {tag}
+                </button>
+              ))}
+            </div>
           )}
           <div className="tk-todo-add">
             <input

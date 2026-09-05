@@ -610,3 +610,26 @@
 .dsh-tasks .tk-tag-remove:hover {
   color: var(--dsw-alias-state-error-primary);
 }
+
+/* quick-add suggestions (tags already used on other cards) */
+.dsh-tasks .tk-tag-suggest {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.dsh-tasks .tk-tag-suggest-label {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-tasks .tk-tag-suggest-chip {
+  border: none;
+  cursor: pointer;
+}
+
+.dsh-tasks .tk-tag-suggest-chip:hover {
+  opacity: 0.85;
+}

@@ -196,10 +196,11 @@ priority, optional due date, archive/restore/delete).
   date-only values read as single-moment due dates.
 - **Tags** — each card optionally carries up to 20 user-assigned tags
   (strings, trimmed + deduped). Board cards and the list view render them as
-  colored chips whose hue derives deterministically from the tag name (looks
-  random, stays stable); the card editor adds/removes tags with a free-text
-  input. PATCH `tags` is a whole-list replacement; omitting it keeps the
-  current list.
+  colored chips whose color comes from a fixed palette picked by the tag
+  text's hash (stable, no stored color data); the card editor adds/removes
+  tags with a free-text input and offers **quick-add chips for tags already
+  used on other cards**. PATCH `tags` is a whole-list replacement; omitting
+  it keeps the current list.
 - **Subtasks** — each card optionally carries up to 50 checkable subtasks
   (structured `{ id, content, done }`, ids minted host-side). The board card
   shows the checklist (first 3 items + `+n`, **unchecked items first**) with
