@@ -36,6 +36,7 @@ export interface PaperspaceSettingsInput {
   rescanIntervalMs?: number;
   workspaceDir?: string;
   translateModel?: { provider: string; model: string } | null;
+  proxy?: string;
 }
 
 /** Harness home: `DSH_HOME` when set, else `~/.dsh` (dsh-workspace-enhancement pattern). */
@@ -71,6 +72,7 @@ export function builtinDefaults(): PaperspaceConfig {
     translateTimeoutMs: 120000,
     rescanIntervalMs: 60000,
     translateModel: null,
+    proxy: '',
   };
 }
 
@@ -99,6 +101,7 @@ export function resolveConfig(
     translateTimeoutMs: typeof row.translateTimeoutMs === 'number' ? row.translateTimeoutMs : base.translateTimeoutMs,
     rescanIntervalMs: typeof row.rescanIntervalMs === 'number' ? row.rescanIntervalMs : base.rescanIntervalMs,
     translateModel: normalizeSelection(row.translateModel),
+    proxy: typeof row.proxy === 'string' ? row.proxy : base.proxy,
   };
   if (!file) return merged;
   const fileDataDir = file.dataDir ? normalizePath(file.dataDir)! : merged.dataDir;
@@ -117,6 +120,7 @@ export function resolveConfig(
     translateTimeoutMs: file.translateTimeoutMs,
     rescanIntervalMs: file.rescanIntervalMs,
     translateModel: file.translateModel ?? merged.translateModel,
+    proxy: file.proxy ?? merged.proxy,
   };
 }
 
@@ -145,6 +149,7 @@ export const settingsInputSchema = z.object({
   translateTimeoutMs: z.number().int().min(1000).max(3600000).optional(),
   rescanIntervalMs: z.number().int().min(5000).max(86400000).optional(),
   translateModel: translateModelSchema.nullable().optional(),
+  proxy: z.string().max(2048).optional(),
 }).strict();
 
 /** Validate + merge an input onto the current effective settings. */
@@ -173,6 +178,7 @@ export function applySettingsInput(
     translateTimeoutMs: input.translateTimeoutMs ?? base.translateTimeoutMs,
     rescanIntervalMs: input.rescanIntervalMs ?? base.rescanIntervalMs,
     translateModel: input.translateModel !== undefined ? input.translateModel : base.translateModel,
+    proxy: input.proxy ?? base.proxy,
   };
 }
 

@@ -41,6 +41,30 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** Serialize an error for diagnostics: message, code, full stack + cause chain. */
+function describeError(error: unknown): string {
+  const seen = new Set<unknown>();
+  const parts: string[] = [];
+  let current: unknown = error;
+  while (current !== undefined && current !== null && !seen.has(current)) {
+    seen.add(current);
+    if (current instanceof Error) {
+      const extra: Record<string, unknown> = {};
+      for (const key of ['code', 'severity', 'detail', 'hint', 'position', 'routine', 'query', 'errno', 'syscall', 'address', 'port']) {
+        const value = (current as unknown as Record<string, unknown>)[key];
+        if (value !== undefined) extra[key] = value;
+      }
+      const extras = Object.keys(extra).length ? ' ' + JSON.stringify(extra) : '';
+      parts.push(`${current.name}: ${current.message}${extras}\n${current.stack ?? ''}`);
+      current = (current as unknown as { cause?: unknown }).cause;
+    } else {
+      parts.push(String(current));
+      break;
+    }
+  }
+  return parts.join('\n--- cause ---\n');
+}
+
 export function startWorker(
   ctx: { effect(fn: () => unknown, label?: string): unknown },
   runtime: PaperspaceRuntime,
@@ -56,6 +80,7 @@ export function startWorker(
   const translateStuckAfterMinutes = envNumber(config.translateStuckAfterMinutes, 'TRANSLATE_STUCK_AFTER_MINUTES');
   const translateTimeoutMs = envNumber(config.translateTimeoutMs, 'TRANSLATE_TIMEOUT_MS');
   const rescanIntervalMs = envNumber(config.rescanIntervalMs, 'RESCAN_INTERVAL_MS');
+  const proxyUrl = config.proxy || null;
 
   const liveness = { translateTickAt: 0, lastClaimAt: 0, lastError: '' };
 
@@ -68,8 +93,8 @@ export function startWorker(
         papers.heartbeat(paper.id).catch(() => {});
       }, HEARTBEAT_MS);
       try {
-        const metadata = await fetchArxivMetadata(paper.arxivId, ingestTimeoutMs);
-        const { html, baseUrl } = await fetchArxivHtml(paper.arxivId, ingestTimeoutMs);
+        const metadata = await fetchArxivMetadata(paper.arxivId, ingestTimeoutMs, proxyUrl);
+        const { html, baseUrl } = await fetchArxivHtml(paper.arxivId, ingestTimeoutMs, proxyUrl);
         const markdown = htmlToMarkdown(html);
         const { assets } = await storeImages({
           arxivId: paper.arxivId,
@@ -79,6 +104,7 @@ export function startWorker(
           maxBytes: maxAssetBytes,
           timeoutMs: ingestTimeoutMs,
           concurrency: ingestConcurrency,
+          proxyUrl,
         });
 
         await sql.begin(async tx => {
@@ -126,7 +152,13 @@ export function startWorker(
       const sql = await runtime.getSql();
       const translations = createTranslationRepo(sql);
       const papers = createPaperRepo(sql);
-      const job = await translations.claimNextJob();
+      let job;
+      try {
+        job = await translations.claimNextJob();
+      } catch (error) {
+        console.error('[paperspace] claimNextJob failed:', describeError(error));
+        throw error;
+      }
       if (!job) return false;
       liveness.lastClaimAt = Date.now();
       // The provider is persisted with the job: a settings-specified DSH route
@@ -139,6 +171,7 @@ export function startWorker(
         llm: (getLlm?.() as DshLlmFace | undefined) ?? null,
         timeoutMs: translateTimeoutMs,
         maxAttempts: translateMaxAttempts,
+        proxyUrl,
       };
       const paper = await papers.findByRef(job.paperId);
       try {
@@ -195,7 +228,7 @@ export function startWorker(
       void translateOne()
         .catch(error => {
           liveness.lastError = messageOf(error);
-          console.error('[paperspace] translation tick failed', messageOf(error));
+          console.error('[paperspace] translation tick failed:', describeError(error));
         })
         .finally(() => {
           clearTimeout(watchdog);
@@ -214,6 +247,7 @@ export function startWorker(
       translateMaxAttempts,
       translateStuckAfterMinutes,
       translateTimeoutMs,
+      proxy: proxyUrl ?? '(none)',
     });
 
     return () => {

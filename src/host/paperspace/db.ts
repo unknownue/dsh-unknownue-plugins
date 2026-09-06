@@ -31,7 +31,11 @@ export function createPaperspaceRuntime(config: PaperspaceConfig): PaperspaceRun
     initialMemory: config.initialMemoryBytes,
     extensions: { pgcrypto },
   });
-  const server = new PGLiteSocketServer({ db: pglite, port: config.port, host: '127.0.0.1' });
+  // PGLiteSocketServer defaults to maxConnections:1 and REJECTS (ECONNRESET)
+  // any further client connection. The postgres.js pool below uses max:2 (and
+  // sql.begin opens a dedicated connection), so the server must accept at
+  // least that many; leave headroom for pool rotation.
+  const server = new PGLiteSocketServer({ db: pglite, port: config.port, host: '127.0.0.1', maxConnections: 5 });
 
   let port = config.port;
   let sql: Sql | undefined;

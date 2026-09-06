@@ -148,7 +148,7 @@ button.paper-item-title:hover { text-decoration:underline; }
 .paper-article blockquote { margin:16px 0; padding:2px 16px; border-left:3px solid var(--paper-line, #d4d4d8); color:var(--ink-2, #71717a); }
 .paper-article a { color:var(--paper-link, #2563eb); text-decoration:underline; text-underline-offset:2px; }
 .paper-article code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.86em; background:var(--paper-code-bg, #f4f4f5); border-radius:4px; padding:1px 5px; }
-.paper-article pre { overflow:auto; padding:16px; border-radius:8px; background:var(--paper-pre-bg, #27272a); color:var(--paper-pre-fg, #fafafa); }
+.paper-article pre { overflow:auto; padding:16px; border:1px solid var(--paper-line, #e4e4e7); border-radius:8px; background:var(--paper-pre-bg, #f6f8fa); color:var(--paper-pre-fg, #1f2328); }
 .paper-article pre code { background:transparent; padding:0; color:inherit; }
 .paper-article img { display:block; max-width:100%; max-height:60vh; width:auto; height:auto; margin:16px auto; border:1px solid var(--paper-line, #e4e4e7); border-radius:8px; background:var(--paper-img-bg, transparent); cursor:zoom-in; }
 .paper-article table { width:100%; border-collapse:collapse; margin:16px 0; }

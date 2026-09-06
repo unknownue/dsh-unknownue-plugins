@@ -4,16 +4,17 @@
  */
 import { XMLParser } from 'fast-xml-parser';
 import type { PaperMetadata } from '../domain/types';
+import { proxyFetch } from '../proxy';
 
 const USER_AGENT = 'paperspace-ingest/0.1 (academic paper reader)';
 
-function fetchWithTimeout(url: string, timeoutMs: number, init: RequestInit = {}) {
-  return fetch(url, {
+function fetchWithTimeout(url: string, timeoutMs: number, init: RequestInit = {}, proxyUrl?: string | null) {
+  return proxyFetch(url, {
     ...init,
     redirect: 'follow',
     signal: AbortSignal.timeout(timeoutMs),
     headers: { 'user-agent': USER_AGENT, ...(init.headers ?? {}) },
-  });
+  }, proxyUrl);
 }
 
 function normalize(value: unknown): string {
@@ -26,9 +27,9 @@ function asArray<T>(value: T | T[] | undefined): T[] {
 }
 
 /** Fetch title/authors/abstract/categories/published from the arXiv Atom API. */
-export async function fetchArxivMetadata(arxivId: string, timeoutMs: number): Promise<PaperMetadata> {
+export async function fetchArxivMetadata(arxivId: string, timeoutMs: number, proxyUrl?: string | null): Promise<PaperMetadata> {
   const url = `https://export.arxiv.org/api/query?id_list=${encodeURIComponent(arxivId)}`;
-  const response = await fetchWithTimeout(url, timeoutMs);
+  const response = await fetchWithTimeout(url, timeoutMs, {}, proxyUrl);
   if (!response.ok) throw new Error(`arXiv API returned HTTP ${response.status}`);
   const xml = await response.text();
   const parser = new XMLParser({
@@ -68,7 +69,7 @@ export interface ArxivHtml {
  * Fetch the paper HTML. Prefers arXiv's native HTML5 rendering and falls back
  * to ar5iv (LaTeX → HTML) which covers older papers.
  */
-export async function fetchArxivHtml(arxivId: string, timeoutMs: number): Promise<ArxivHtml> {
+export async function fetchArxivHtml(arxivId: string, timeoutMs: number, proxyUrl?: string | null): Promise<ArxivHtml> {
   const primary = `https://arxiv.org/html/${arxivId}`;
   // Give the primary endpoint only a slice of the budget so a hanging
   // arxiv.org response can't eat the whole timeout before the ar5iv
@@ -76,7 +77,7 @@ export async function fetchArxivHtml(arxivId: string, timeoutMs: number): Promis
   const primaryTimeoutMs = Math.min(timeoutMs, 12000);
   const primaryResponse = await fetchWithTimeout(primary, primaryTimeoutMs, {
     headers: { accept: 'text/html' },
-  });
+  }, proxyUrl);
   if (primaryResponse.ok) {
     const html = await primaryResponse.text();
     if (html.includes('<body')) return { html, baseUrl: primaryResponse.url };
@@ -85,7 +86,7 @@ export async function fetchArxivHtml(arxivId: string, timeoutMs: number): Promis
   const fallback = `https://ar5iv.labs.arxiv.org/html/${arxivId}`;
   const fallbackResponse = await fetchWithTimeout(fallback, timeoutMs, {
     headers: { accept: 'text/html' },
-  });
+  }, proxyUrl);
   if (!fallbackResponse.ok) {
     throw new Error(`HTML fetch failed: arxiv.org/html ${primaryResponse.status}, ar5iv ${fallbackResponse.status}`);
   }

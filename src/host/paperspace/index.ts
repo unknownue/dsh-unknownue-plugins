@@ -28,6 +28,7 @@ import {
   resolveConfig,
   saveSettingsFile,
 } from './settings';
+import { disposeProxyAgent } from './proxy';
 import { startWorker, type WorkerLiveness } from './worker/loops';
 import type {
   PaperspaceActive,
@@ -237,6 +238,7 @@ export function apply(ctx: PaperspaceHostContext, config: PartialPaperspaceConfi
       active?.runtime.dispose();
       active = null;
       paperContextCache.clear();
+      disposeProxyAgent();
     },
     'dsh-unknownue-plugins/paperspace: runtime dispose',
   );

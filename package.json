@@ -78,7 +78,6 @@
     "@electric-sql/pglite": "^0.5.8",
     "@electric-sql/pglite-socket": "^0.2.11",
     "cheerio": "^1.2.0",
-    "dsh-workspace-enhancement": "github:unknownue/dsh-workspace-enhancement#main",
     "fast-xml-parser": "^5.11.1",
     "github-slugger": "^2.0.0",
     "katex": "^0.16.47",

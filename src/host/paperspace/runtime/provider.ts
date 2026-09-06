@@ -3,15 +3,19 @@
  */
 import { parseSse } from './sse';
 import type { ChatMessage, Provider, ProviderChunk, ProviderRequest, ToolDefinition } from './types';
-export interface OpenAIProviderOptions { baseUrl: string; apiKey?: string; model: string; fetch?: typeof globalThis.fetch; timeoutMs?: number }
+import { createProxyFetchFn } from '../proxy';
+export interface OpenAIProviderOptions { baseUrl: string; apiKey?: string; model: string; fetch?: typeof globalThis.fetch; timeoutMs?: number; proxyUrl?: string | null }
 export class OpenAICompatibleProvider implements Provider {
-  constructor(private readonly options: OpenAIProviderOptions) {}
+  private readonly fetchFn: typeof globalThis.fetch;
+  constructor(private readonly options: OpenAIProviderOptions) {
+    this.fetchFn = options.fetch ?? createProxyFetchFn(options.proxyUrl);
+  }
   async *stream(request: ProviderRequest): AsyncGenerator<ProviderChunk> {
     const controller = new AbortController(); const signal = mergeSignals(request.signal, controller.signal);
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (this.options.timeoutMs) timer = setTimeout(() => controller.abort(), this.options.timeoutMs);
     try {
-      const response = await (this.options.fetch ?? fetch)(this.options.baseUrl.replace(/\/$/, '') + '/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', ...(this.options.apiKey ? {authorization: 'Bearer ' + this.options.apiKey} : {}) }, body: JSON.stringify({model: this.options.model, messages: request.messages, tools: request.tools?.map(tool => ({type: 'function', function: {name: tool.name, description: tool.description, parameters: tool.parameters}})), stream: true}), signal });
+      const response = await this.fetchFn(this.options.baseUrl.replace(/\/$/, '') + '/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', ...(this.options.apiKey ? {authorization: 'Bearer ' + this.options.apiKey} : {}) }, body: JSON.stringify({model: this.options.model, messages: request.messages, tools: request.tools?.map(tool => ({type: 'function', function: {name: tool.name, description: tool.description, parameters: tool.parameters}})), stream: true}), signal });
       if (!response.ok || !response.body) {
         const detail = await response.text().catch(() => '');
         let message = detail.trim();

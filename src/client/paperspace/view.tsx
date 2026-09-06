@@ -75,6 +75,7 @@ function SetupScreen({ defaults, onConfigured }: { defaults: SettingsView['defau
       translateTimeoutMs: defaults.translateTimeoutMs,
       rescanIntervalMs: defaults.rescanIntervalMs,
       translateModel: defaults.translateModel,
+      proxy: defaults.proxy ?? '',
     });
     setBusy(false);
     if (!result.ok) {

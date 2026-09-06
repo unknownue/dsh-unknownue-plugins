@@ -108,19 +108,27 @@ class DshLlmProvider implements StreamProvider {
     try {
       // Method invocation on the service keeps its `this` binding — the real
       // LlmRuntime.stream delegates through instance state.
-      for await (const chunk of this.face.stream!({
+      // NOTE: we intentionally omit `source` on messages — DSH's llm service
+      // may route or rate-limit plugin-sourced messages differently, and
+      // translation should behave identically to normal user chat.
+      const iterable = this.face.stream!({
         provider: this.provider,
         model: this.model,
         messages: input.messages.map(message =>
           message.role === 'system'
-            ? { role: 'system' as const, content: [{ type: 'text' as const, text: message.content }], source: { kind: 'plugin' as const, plugin: 'dsh-unknownue-plugins' } }
-            : { role: 'user' as const, content: [{ type: 'text' as const, text: message.content }], source: { kind: 'user' as const } },
+            ? { role: 'system' as const, content: [{ type: 'text' as const, text: message.content }] }
+            : { role: 'user' as const, content: [{ type: 'text' as const, text: message.content }] },
         ),
         signal: controller.signal,
-      })) {
+      });
+      for await (const chunk of iterable) {
         if (chunk.type === 'text-delta' && chunk.text) yield { text: chunk.text };
         if (chunk.type === 'finish' && chunk.reason) finish = chunk.reason;
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[paperspace] llm stream failed (provider=${this.provider} model=${this.model}):`, message, error instanceof Error ? `\n${error.stack ?? ''}` : '');
+      throw error;
     } finally {
       clearTimeout(timer);
     }
@@ -142,6 +150,7 @@ export interface TranslationContext {
   llm?: DshLlmFace | null;
   timeoutMs: number;
   maxAttempts: number;
+  proxyUrl?: string | null;
 }
 
 /** Build the streaming provider the job's persisted config calls for. */
@@ -153,7 +162,7 @@ function buildProvider(ctx: TranslationContext): StreamProvider {
     }
     return new DshLlmProvider(face, ctx.provider.provider, ctx.provider.model, ctx.timeoutMs);
   }
-  return new OpenAICompatibleProvider({ baseUrl: ctx.provider.baseUrl, apiKey: ctx.provider.apiKey ?? undefined, model: ctx.provider.model, timeoutMs: ctx.timeoutMs });
+  return new OpenAICompatibleProvider({ baseUrl: ctx.provider.baseUrl, apiKey: ctx.provider.apiKey ?? undefined, model: ctx.provider.model, timeoutMs: ctx.timeoutMs, proxyUrl: ctx.proxyUrl });
 }
 
 export async function runTranslationJob(job: TranslationJobRow, markdown: string, ctx: TranslationContext): Promise<void> {
@@ -214,8 +223,13 @@ export async function failTranslationJob(job: TranslationJobRow, error: unknown,
     return;
   }
   const delaySeconds = Math.min(60 * 2 ** (job.attempts - 1), 900);
-  await ctx.translations.requeueJob(job.id, message, delaySeconds);
-  console.warn(`[paperspace] translation attempt ${job.attempts} failed, retrying in ${delaySeconds}s (${job.paperId} → ${job.targetLang}): ${message}`);
+  try {
+    await ctx.translations.requeueJob(job.id, message, delaySeconds);
+    console.warn(`[paperspace] translation attempt ${job.attempts} failed, retrying in ${delaySeconds}s (${job.paperId} → ${job.targetLang}): ${message}`);
+  } catch (dbError) {
+    console.error(`[paperspace] translation requeue WRITE failed for job ${job.id}: ${dbError instanceof Error ? dbError.message : String(dbError)}`);
+    throw dbError;
+  }
 }
 
 async function extractGlossary(markdown: string, targetLang: string, provider: StreamProvider): Promise<Record<string, string>> {

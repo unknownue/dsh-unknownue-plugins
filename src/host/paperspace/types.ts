@@ -42,6 +42,8 @@ export interface PaperspaceConfig {
    * + model id (models currently available in DSH). null = not configured.
    */
   translateModel: { provider: string; model: string } | null;
+  /** HTTP(S) proxy URL for external fetches (arXiv, images, LLM API). Empty string → auto-detect from env vars. */
+  proxy: string;
 }
 
 export type PartialPaperspaceConfig = Partial<PaperspaceConfig>;

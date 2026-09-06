@@ -33,8 +33,8 @@ const THEME_CSS = `
   --ink-3: #52525b;
   --paper-line: #e4e4e7;
   --paper-code-bg: #f4f4f5;
-  --paper-pre-bg: #27272a;
-  --paper-pre-fg: #fafafa;
+  --paper-pre-bg: #f6f8fa;
+  --paper-pre-fg: #1f2328;
   --paper-link: #2563eb;
   --paper-note-fg: #b45309;
   --paper-img-bg: transparent;

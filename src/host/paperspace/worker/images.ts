@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto';
 import type { NewAsset } from '../domain/assets';
 import type { ObjectStoreFace } from '../filestore';
+import { proxyFetch } from '../proxy';
 
 const USER_AGENT = 'paperspace-ingest/0.1 (academic paper reader)';
 
@@ -71,8 +72,9 @@ export async function storeImages(params: {
   maxBytes: number;
   timeoutMs: number;
   concurrency: number;
+  proxyUrl?: string | null;
 }): Promise<StoreImagesResult> {
-  const { arxivId, markdown, store, baseUrl, maxBytes, timeoutMs, concurrency } = params;
+  const { arxivId, markdown, store, baseUrl, maxBytes, timeoutMs, concurrency, proxyUrl } = params;
   const urls = extractImageUrls(markdown);
   const entries = await mapLimit(urls, concurrency, async url => {
     let absolute: string;
@@ -82,11 +84,11 @@ export async function storeImages(params: {
       return null;
     }
     try {
-      const response = await fetch(absolute, {
+      const response = await proxyFetch(absolute, {
         redirect: 'follow',
         signal: AbortSignal.timeout(timeoutMs),
         headers: { 'user-agent': USER_AGENT },
-      });
+      }, proxyUrl);
       if (!response.ok) return null;
       const contentType = (response.headers.get('content-type') ?? guessContentType(absolute)).split(';')[0].trim();
       if (!contentType.startsWith('image/')) return null;

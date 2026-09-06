@@ -37,6 +37,7 @@ export interface PaperspaceSettingsFile {
   translateTimeoutMs: number;
   rescanIntervalMs: number;
   translateModel: TranslateModelSelection | null;
+  proxy: string;
 }
 
 export interface SettingsView {
@@ -73,6 +74,7 @@ export interface SettingsInput {
   translateTimeoutMs: number;
   rescanIntervalMs: number;
   translateModel: TranslateModelSelection | null;
+  proxy: string;
 }
 
 export interface DshModelDirectory {
@@ -180,6 +182,7 @@ export default function UnknownueSettingsPage() {
       translateTimeoutMs: base.translateTimeoutMs,
       rescanIntervalMs: base.rescanIntervalMs,
       translateModel: base.translateModel ?? null,
+      proxy: base.proxy ?? '',
     });
     setErr('');
   }, []);
@@ -318,6 +321,12 @@ export default function UnknownueSettingsPage() {
                 </button>
               </>
             )}
+          </div>
+
+          <div className="bundle-section-sub">
+            <h3>网络代理</h3>
+            <p className="settings-empty">arXiv 下载、论文图片、LLM 翻译均通过此代理访问外网。留空则自动检测 HTTPS_PROXY / HTTP_PROXY 环境变量。</p>
+            <Field label="代理地址 proxy" keyName="proxy" form={form} onChange={set} placeholder="http://127.0.0.1:7897（留空 = 自动检测）" />
           </div>
 
           <details className="ps-advanced">
