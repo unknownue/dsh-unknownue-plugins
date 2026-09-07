@@ -108,8 +108,8 @@ button.paper-item-title:hover { text-decoration:underline; }
 .back-link { display:block; margin-bottom:12px; color:var(--ink-3, #52525b); font-size:13px; border:0; background:transparent; padding:0; cursor:pointer; }
 .paper-header h1 { margin:0; font-size:24px; line-height:1.3; color:var(--ink, #18181b); }
 .paper-header p { color:var(--ink-2, #71717a); font-size:13px; }
-.paper-header-bottom { display:flex; justify-content:space-between; gap:8px; margin-top:6px; }
-.paper-header-bottom>div { display:flex; flex-wrap:wrap; gap:6px; }
+.paper-header-bottom { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:6px; margin-bottom:4px; }
+.paper-header-bottom>div { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
 .font-size-control { display:inline-flex; align-items:center; gap:2px; padding:0 4px; border:1px solid var(--ps-line, #e4e4e7); border-radius:8px; background:var(--ps-bg, #fff); }
 .font-size-button { border:0; background:transparent; color:var(--ps-text-2, #52525b); font-size:12px; width:26px; height:26px; border-radius:6px; cursor:pointer; }
 .font-size-button:hover:not(:disabled) { background:var(--ps-hover, rgba(0,0,0,0.05)); }
@@ -136,7 +136,7 @@ button.paper-item-title:hover { text-decoration:underline; }
 /* ===== Back-to-top (bottom-right of the paper tab) ===== */
 .back-to-top { position:fixed; z-index:35; width:38px; height:38px; display:grid; place-items:center; border:1px solid var(--paper-line, #e4e4e7); border-radius:50%; background:var(--surface, rgba(250,250,250,0.92)); color:var(--ps-text-2, #52525b); font-size:17px; line-height:1; cursor:pointer; box-shadow:0 4px 16px #0000001f; }
 .back-to-top:hover { color:var(--ps-text, #18181b); border-color:var(--paper-line-strong, #d4d4d8); transform:translateY(-1px); }
-.paper-article { padding:36px 40px 120px; color:var(--ink, #18181b); font-size:var(--ps-article-font-size, 16px); }
+.paper-article { padding:36px 40px 120px; color:var(--ink, #18181b); font-size:var(--ps-article-font-size, 16px); max-width:var(--ps-article-max-width, 100%); margin-left:auto; margin-right:auto; }
 .paper-article section { margin:0 0 32px; }
 .paper-article h1 { margin:32px 0 12px; font-size:1.625em; }
 .paper-article h2 { margin:32px 0 12px; font-size:1.25em; }

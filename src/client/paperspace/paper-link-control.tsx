@@ -17,9 +17,9 @@ interface LinkedInfo {
 
 interface SessionsFaceProps {
   sessionId?: string;
-  /** InputZone owner share: point-in-time conversation snapshot. */
+  /** InputZone owner share: point-in-time session snapshot. */
   session?: {
-    composerPhase?: string;
+    blank?: boolean;
     openState?: string;
   };
 }
@@ -42,7 +42,7 @@ export function PaperLinkControl({ sessionId, session }: SessionsFaceProps) {
     if (!node) return;
     const row = node.closest('[class*="composerStack"]')?.querySelector<HTMLElement>('[class*="heroWorkspaceRow"]');
     if (row && node.parentElement !== row) row.appendChild(node);
-  }, [session?.composerPhase, session?.openState, checked, linked, menuOpen]);
+  }, [session?.blank, session?.openState, checked, linked, menuOpen]);
 
   // Probe the current session's binding.
   useEffect(() => {
@@ -135,7 +135,7 @@ export function PaperLinkControl({ sessionId, session }: SessionsFaceProps) {
   if (!sessionId || !checked) return null;
   // Hero gate — the same condition DSH's welcome screen uses for the mode
   // selector (`composerPhase === 'blank' && (openState === 'open' || summaryBlank)`).
-  if (session && (session.composerPhase !== 'blank' || session.openState !== 'open')) return null;
+  if (session && (!session.blank || session.openState !== 'open')) return null;
 
   const chip = (
     <div className="paper-link-seat-wrap" ref={chipRef}>

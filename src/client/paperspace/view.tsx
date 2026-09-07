@@ -120,6 +120,7 @@ function SetupScreen({ defaults, onConfigured }: { defaults: SettingsView['defau
 
 export interface PaperspaceSessionsFace {
   open(id: string): void;
+  create?(opts: { workspaceId: string }): Promise<string>;
   list?: {
     getSnapshot(): { current?: string; byId?: Record<string, unknown> };
   };
@@ -128,10 +129,6 @@ export interface PaperspaceSessionsFace {
 export interface PaperspaceWorkspacesFace {
   /** Returns the wire WorkspaceView (`workspaceId`, `path`, …). */
   create(input: { path: string }): Promise<{ workspaceId: string; path: string }>;
-  /** Connect the workspace's blank session (returns an id already in the list). */
-  connectWorkspace?(workspaceId: string): Promise<string>;
-  /** DSH's own "New Session flow": connect + OPEN the resulting session. */
-  startSession(workspaceId?: string): void;
   list?: {
     getSnapshot(): { items?: Array<{ workspaceId: string }> };
   };
@@ -221,10 +218,7 @@ export default function PaperspaceView({ sessions, workspaces }: { sessions?: Pa
     void reload();
   }, [reload]);
 
-  // Native DSH flow, with step-by-step diagnostics (`[paperspace:discuss]` in
-  // the browser console) and a dual open path:
-  //   A) connectWorkspace → sessions.open
-  //   B) fallback startSession (DSH's own open flow)
+  // Native DSH flow: sessions.create({ workspaceId }) → sessions.open()
   const discuss = useCallback(
     async (arxivId: string) => {
       const step = (message: string) => console.log('[paperspace:discuss]', message);
@@ -242,72 +236,36 @@ export default function PaperspaceView({ sessions, workspaces }: { sessions?: Pa
         const body = await response.json().catch(() => null);
         if (!response.ok) return die('无法准备论文会话：' + ((body?.message ?? body?.code) || 'HTTP ' + response.status));
         if (!workspaces) return die('DSH 工作区服务不可用');
+        if (!sessions?.create) return die('DSH 会话创建服务不可用');
+
         const workspace = await workspaces.create({ path: String(body.workspaceDir) });
         const workspaceId = workspace.workspaceId;
         step('workspaceId=' + workspaceId);
-        // connectWorkspace requires the workspace in the client list snapshot.
-        let inList = false;
+
+        // Wait for workspace to appear in the client list.
         for (let attempt = 0; attempt < 40; attempt++) {
           const items = workspaces.list?.getSnapshot()?.items ?? [];
-          if (items.some(item => item.workspaceId === workspaceId)) {
-            inList = true;
-            break;
-          }
+          if (items.some(item => item.workspaceId === workspaceId)) break;
           await sleep(250);
         }
-        step('workspace in client list: ' + inList);
-        const previousCurrent = sessions?.list?.getSnapshot()?.current;
-        step('previousCurrent=' + String(previousCurrent));
 
-        // Path A: typed connectWorkspace + manual open.
-        let sessionId: string | undefined;
-        let opened = false;
-        if (typeof workspaces.connectWorkspace === 'function') {
-          try {
-            sessionId = await workspaces.connectWorkspace(workspaceId);
-            step('connectWorkspace → ' + sessionId);
-            try {
-              sessions?.open?.(sessionId);
-              opened = true;
-              step('open() accepted ' + sessionId);
-            } catch (openError) {
-              step('open() threw: ' + String(openError));
-            }
-          } catch (connectError) {
-            step('connectWorkspace threw: ' + String(connectError));
-          }
-        }
+        // Create a session in this workspace, then open it.
+        const sessionId = await sessions.create({ workspaceId });
+        step('sessionId=' + sessionId);
+        sessions.open(sessionId);
+        step('open() done');
 
-        // Path B: native startSession (connect + open through DSH's own flow).
-        if (!opened) {
-          step('fallback: startSession');
-          workspaces.startSession(workspaceId);
-        }
-
-        // Resolve the CURRENT session (changed selection or the connected id).
-        let currentId: string | undefined;
-        for (let attempt = 0; attempt < 60; attempt++) {
-          const current = sessions?.list?.getSnapshot()?.current;
-          if (current && (current === sessionId || current !== previousCurrent)) {
-            currentId = current;
-            break;
-          }
-          await sleep(250);
-        }
-        step('current=' + String(currentId) + ' session=' + String(sessionId));
-        const target = currentId ?? sessionId;
-        if (!target) return die('未能打开论文会话——请在 Paperspace 分组中手动点击该会话后再提问。');
-
+        // Link the paper to the session.
         const linkResponse = await fetch(sessionsUrl() + '/link', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ session_id: target, arxiv_id: arxivId }),
+          body: JSON.stringify({ session_id: sessionId, arxiv_id: arxivId }),
         });
         if (!linkResponse.ok) {
           const linkBody = (await linkResponse.json().catch(() => null)) as { message?: string } | null;
           return die('会话已打开，但论文绑定失败：' + (linkBody?.message ?? ''));
         }
-        step('linked ' + target + ' → ' + arxivId);
+        step('linked ' + sessionId + ' → ' + arxivId);
       } catch (error) {
         die('无法创建论文会话：' + (error instanceof Error ? error.message : String(error)));
       }

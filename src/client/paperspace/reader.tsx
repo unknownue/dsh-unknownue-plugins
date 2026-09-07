@@ -7,6 +7,7 @@ import GithubSlugger from 'github-slugger';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { paperUrl } from './api';
 import { DEFAULT_FONT_SIZE, FONT_SIZE_STEP, MAX_FONT_SIZE, MIN_FONT_SIZE, readPaperspaceFontSize, rememberPaperspaceFontSize } from './font-size';
+import { DEFAULT_WIDTH_PCT, MAX_WIDTH_PCT, MIN_WIDTH_PCT, WIDTH_PCT_STEP, readPaperspaceContentWidthPct, rememberPaperspaceContentWidthPct } from './content-width';
 import ThemeSwitch from './theme-switch';
 import type { PaperspaceTheme } from './theme';
 import TranslationPanel, { type InitialTranslation } from './translation-panel';
@@ -68,6 +69,7 @@ export default function Reader({
   const [initialView] = useState<TranslationViewState>(() => readTranslationViewState(arxivId));
   const [removing, setRemoving] = useState(false);
   const [fontSize, setFontSize] = useState<number>(readPaperspaceFontSize);
+  const [contentWidthPct, setContentWidthPct] = useState<number>(readPaperspaceContentWidthPct);
   const [tocOpen, setTocOpen] = useState(false);
   const [activeSlug, setActiveSlug] = useState('');
   const jumpEnterTimer = useRef<number | undefined>(undefined);
@@ -172,6 +174,14 @@ export default function Reader({
     setFontSize(previous => {
       const next = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, previous + delta));
       rememberPaperspaceFontSize(next);
+      return next;
+    });
+  }, []);
+
+  const changeContentWidthPct = useCallback((delta: number) => {
+    setContentWidthPct(previous => {
+      const next = Math.min(MAX_WIDTH_PCT, Math.max(MIN_WIDTH_PCT, previous + delta));
+      rememberPaperspaceContentWidthPct(next);
       return next;
     });
   }, []);
@@ -380,7 +390,7 @@ export default function Reader({
   }
 
   return (
-    <div className="reader-shell" ref={shellRef} style={{ '--ps-article-font-size': fontSize + 'px' } as CSSProperties}>
+    <div className="reader-shell" ref={shellRef} style={{ '--ps-article-font-size': fontSize + 'px', '--ps-article-max-width': contentWidthPct + '%' } as CSSProperties}>
       <button className="toc-trigger" type="button" aria-label="Show contents">
         ☰
       </button>
@@ -471,6 +481,21 @@ export default function Reader({
                   </span>
                   <button type="button" className="font-size-button" onClick={() => changeFontSize(FONT_SIZE_STEP)} disabled={fontSize >= MAX_FONT_SIZE} aria-label="增大字号">
                     A+
+                  </button>
+                </div>
+                <div className="font-size-control" role="group" aria-label="正文宽度">
+                  <button type="button" className="font-size-button" onClick={() => changeContentWidthPct(-WIDTH_PCT_STEP)} disabled={contentWidthPct <= MIN_WIDTH_PCT} aria-label="收窄">
+                    ←
+                  </button>
+                  <span
+                    className="font-size-value"
+                    title="正文宽度（%），点击恢复100%"
+                    onClick={() => changeContentWidthPct(DEFAULT_WIDTH_PCT - contentWidthPct)}
+                  >
+                    {contentWidthPct}%
+                  </span>
+                  <button type="button" className="font-size-button" onClick={() => changeContentWidthPct(WIDTH_PCT_STEP)} disabled={contentWidthPct >= MAX_WIDTH_PCT} aria-label="展宽">
+                    →
                   </button>
                 </div>
                 <ThemeSwitch value={theme} onChange={onThemeChange} />
