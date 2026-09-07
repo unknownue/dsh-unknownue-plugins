@@ -347,6 +347,7 @@ export default function PaperspaceView({ sessions, workspaces }: { sessions?: Pa
           )}
           {route.kind === 'reader' && (
             <Reader
+              key={route.arxivId}
               arxivId={route.arxivId}
               theme={psTheme}
               onThemeChange={changeTheme}

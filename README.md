@@ -84,6 +84,9 @@ current session's workspace. The VS Code-style UI is ported from
 - **Resizable splitter** — drag the divider between the tree and the editor to
   adjust the tree width (the editor takes the remainder; persisted per browser);
 - **Editor tabs** — open several files as tabs; Ctrl/Cmd+S saves (dirty marker);
+- **Chat composer hidden** — while the 文件 tab owns the conversation view,
+  DSH's chat input box is hidden via CSS (same approach as the 论文/任务
+  tabs), and the split view expands to the full viewport height;
 - **Markdown preview** — rendered markdown with workspace images inlined via `readDataUrl`;
 - **Context menu** — new file / new directory / rename / copy / delete
   (non-empty directories rejected; the tree walks children first);
@@ -134,9 +137,11 @@ running INSIDE this DSH profile process:
   body: paper library (search/categories/add/ingest polling/retry/delete),
   full reader (sticky TOC, markdown + math via remark/rehype/KaTeX, figure
   lightbox), and the translation panel (原文/译文/双语, progress polling,
-  cancel/retry). Paperspace's stylesheet is scoped under `.dsh-paperspace`
-  at build time; KaTeX fonts are served by the host route
-  `/dsh-unknownue-plugins/paperspace/static/fonts`.
+  cancel/retry). Reopening a paper restores the previous scroll position AND
+  the translation view state (language + 原文/译文/双语) per paper, so the
+  restored offset lands on the same layout it was recorded on. Paperspace's
+  stylesheet is scoped under `.dsh-paperspace` at build time; KaTeX fonts are
+  served by the host route `/dsh-unknownue-plugins/paperspace/static/fonts`.
 - **Native DSH conversations** — paperspace has NO chat UI of its own: the
   **与 AI 讨论** button (library cards + reader header) links a DSH session
   to the paper through the shared **Paperspace** workspace (one entry in the
@@ -213,6 +218,9 @@ priority, optional due date, archive/restore/delete), and a one-click
 - **Revision polling** — board state deliberately lives outside the DSH
   session log; the tab polls one integer (`meta.revision`, 5s) and refetches
   only when it moved, which also covers edits from another browser tab.
+- **Chat composer hidden** — while the 任务 tab owns the conversation view,
+  DSH's chat input box is hidden via CSS (same approach as the 论文/文件
+  tabs), and the board fills the full viewport height.
 - **Loopback-fenced REST** on `ctx.webServer` under
   `/dsh-unknownue-plugins/tasks/api`: `GET /board` (+`?archived=1`),
   `GET /revision`, `POST /cards`, `PATCH /cards/:id`, `POST /cards/:id/move`

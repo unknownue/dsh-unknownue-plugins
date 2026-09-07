@@ -63,6 +63,12 @@ function ensureStyles(): void {
     ".dshfx-resizer::after{content:\"\";position:absolute;top:0;bottom:0;left:2px;width:1px;background:var(--dsw-alias-border-l2);transition:background var(--ds-transition-duration-fast,120ms) ease;}",
     ".dshfx-resizer:hover::after,.dshfx-resizer[data-dragging]::after{background:var(--dsw-alias-state-business-primary);width:2px;left:2px;}",
     ".dshfx-editor-pane{flex:1;min-width:0;overflow:hidden;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);}",
+    // The composer (input box) belongs to the chat view — hide it while the
+    // 文件 tab owns the conversation view (same CSS approach paperspace uses;
+    // the explorer wrapper already subtracts the composer seat height, so
+    // with display:none it fills the whole viewport automatically).
+    "[data-phase='active']:has(.dshfx-split) [data-composer-seat],",
+    "[class*='scrollBody']:has(.dshfx-split) [class*='composerSeat']{display:none !important;}",
   ].join("\n");
   // Refresh an existing tag in place
   const existing = document.querySelector("style[data-dmk-styles]");

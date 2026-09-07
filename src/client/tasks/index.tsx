@@ -10,6 +10,20 @@ import stylesCss from './styles.css';
 
 const NS = 'dsh-unknownue-plugins.tasks';
 
+/**
+ * The composer (input box) belongs to the chat view — hide it while the
+ * tasks tab owns the conversation view. DSH renders the composer for the
+ * active view regardless of which tab it is, so the seat is hidden via CSS
+ * when the tasks root is present in the active conversation (the same
+ * approach paperspace uses).
+ */
+const CHROME_CSS = `
+[data-phase='active']:has(.dsh-tasks) [data-composer-seat],
+[class*='scrollBody']:has(.dsh-tasks) [class*='composerSeat'] {
+  display: none !important;
+}
+`;
+
 const zh: Record<string, string> = {
   'view.label': '任务',
   'mode.board': '看板',
@@ -132,12 +146,15 @@ const en: Record<string, string> = {
 
 function ensureStyles(): void {
   if (typeof document === 'undefined') return;
-  const tagId = 'dsh-tasks/styles.css';
-  const existing = document.querySelector(`style[data-plugin-css="${tagId}"]`);
-  const tag = existing !== null ? existing : document.createElement('style');
-  tag.setAttribute('data-plugin-css', tagId);
-  tag.textContent = stylesCss;
-  if (existing === null) document.head.appendChild(tag);
+  const inject = (tagId: string, css: string) => {
+    const existing = document.querySelector(`style[data-plugin-css="${tagId}"]`);
+    const tag = existing !== null ? existing : document.createElement('style');
+    tag.setAttribute('data-plugin-css', tagId);
+    tag.textContent = css;
+    if (existing === null) document.head.appendChild(tag);
+  };
+  inject('dsh-tasks/styles.css', stylesCss);
+  inject('dsh-tasks/theme.css', CHROME_CSS);
 }
 
 export function applyTasksTab(ctx: any): void {

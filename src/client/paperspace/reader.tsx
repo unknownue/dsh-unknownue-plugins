@@ -10,7 +10,9 @@ import { DEFAULT_FONT_SIZE, FONT_SIZE_STEP, MAX_FONT_SIZE, MIN_FONT_SIZE, readPa
 import ThemeSwitch from './theme-switch';
 import type { PaperspaceTheme } from './theme';
 import TranslationPanel, { type InitialTranslation } from './translation-panel';
-import type { PaperDetail } from './types';
+import { forgetTranslationViewState, readTranslationViewState, rememberTranslationViewState } from './view-state';
+import type { TranslationViewState } from './view-state';
+import type { PaperDetail, ViewMode } from './types';
 
 /**
  * Last scroll offset per paper. Tab switches unmount the reader (DSH renders
@@ -61,7 +63,9 @@ export default function Reader({
   const [paper, setPaper] = useState<PaperDetail | null>(null);
   const [error, setError] = useState('');
   const [initialTranslation, setInitialTranslation] = useState<InitialTranslation>(null);
-  const [initialMode] = useState<'original' | 'translated' | 'bilingual'>('original');
+  // The language + 原文/译文/双语 selection the user left this paper on, so
+  // the restored scroll offset lands on the same layout it was recorded on.
+  const [initialView] = useState<TranslationViewState>(() => readTranslationViewState(arxivId));
   const [removing, setRemoving] = useState(false);
   const [fontSize, setFontSize] = useState<number>(readPaperspaceFontSize);
   const [tocOpen, setTocOpen] = useState(false);
@@ -73,6 +77,27 @@ export default function Reader({
   const [jumpInset, setJumpInset] = useState(12);
   const [jumpBottom, setJumpBottom] = useState(24);
   const [showTopButton, setShowTopButton] = useState(false);
+
+  // What the translation panel ACTUALLY renders (it falls back to the
+  // original article until a completed snapshot exists for its language).
+  const [article, setArticle] = useState<{ mode: ViewMode; completed: boolean; settled: boolean; busy: boolean }>({
+    mode: 'original',
+    completed: false,
+    settled: false,
+    busy: false,
+  });
+  const onArticleState = useCallback(
+    (state: { mode: ViewMode; completed: boolean; settled: boolean; busy: boolean }) => {
+      setArticle(state);
+    },
+    [],
+  );
+  const onViewChange = useCallback(
+    (view: TranslationViewState) => {
+      rememberTranslationViewState(arxivId, view);
+    },
+    [arxivId],
+  );
 
   const toc = paper ? buildToc(paper.markdown) : [];
 
@@ -215,6 +240,7 @@ export default function Reader({
         return;
       }
       scrollOffsets.delete(arxivId);
+      forgetTranslationViewState(arxivId);
       onBack();
     } catch (cause) {
       setError('删除失败：' + (cause instanceof Error ? cause.message : String(cause)));
@@ -223,41 +249,24 @@ export default function Reader({
     }
   }
 
-  // Restore the reader's scroll position. The element that actually scrolls
-  // is NOT necessarily `.reader-main`: DSH's conversation layout puts the view
-  // inside its own scrollport (`.scrollBody`, `overflow:hidden auto` with
-  // `flex:1 0 auto` on the view area), so we track whichever scrollable
-  // ancestor (or the reader-main itself) is doing the scrolling.
+  // ── Scroll tracking ────────────────────────────────────────────────────────
+  // The element that actually scrolls is NOT necessarily `.reader-main`: DSH's
+  // conversation layout puts the view inside its own scrollport (`.scrollBody`,
+  // `overflow:hidden auto` with `flex:1 0 auto` on the view area), so we track
+  // whichever scrollable ancestor (or the reader-main itself) is scrolling.
+  //
+  // Programmatic scrollTop sets (ours or DSH's own reset) fire scroll events
+  // asynchronously, so real user intent is detected from input events instead.
+  // The intent flag lives in a ref: it must survive the apply-effect's
+  // re-runs below (e.g. when the translation content arrives late) so a user
+  // who already started scrolling is never yanked back.
+  const userIntentRef = useRef(false);
   useEffect(() => {
     const main = mainRef.current;
     if (!main) return;
-    const saved = scrollOffsets.get(arxivId);
-
-    const scrollables = (): HTMLElement[] => {
-      const list: HTMLElement[] = [];
-      let node: HTMLElement | null = main;
-      while (node) {
-        const { overflowY } = getComputedStyle(node);
-        if (overflowY === 'auto' || overflowY === 'scroll') list.push(node);
-        node = node.parentElement;
-      }
-      const root = document.scrollingElement as HTMLElement | null;
-      if (root && !list.includes(root)) list.push(root);
-      return list;
-    };
-
-    // Programmatic scrollTop sets (ours or DSH's own reset) fire scroll
-    // events asynchronously, so real user intent is detected from input
-    // events instead — retries stop only when the user actually scrolls.
-    let userIntent = false;
     const markUser = () => {
-      userIntent = true;
+      userIntentRef.current = true;
     };
-    const apply = () => {
-      if (saved === undefined || saved <= 0 || userIntent) return;
-      for (const el of scrollables()) el.scrollTop = saved;
-    };
-
     const onScroll = (event: Event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
@@ -269,6 +278,50 @@ export default function Reader({
     window.addEventListener('wheel', markUser, { passive: true });
     window.addEventListener('touchstart', markUser, { passive: true });
     window.addEventListener('keydown', markUser, true);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('wheel', markUser);
+      window.removeEventListener('touchstart', markUser);
+      window.removeEventListener('keydown', markUser, true);
+      for (const el of scrollContainers(main)) {
+        if (el.scrollTop > 0) {
+          scrollOffsets.set(arxivId, el.scrollTop);
+          break;
+        }
+      }
+    };
+  }, [paper, arxivId]);
+
+  // ── Scroll restore ─────────────────────────────────────────────────────────
+  // The saved offset only matches a specific layout: the one recorded when the
+  // reader was last unmounted. The translation panel reports what it ACTUALLY
+  // renders (original fallback until a completed snapshot exists), so the
+  // apply is deferred until the restored view's layout is really on screen —
+  // e.g. a restored 双语 waits for the completed snapshot before applying.
+  const viewReady =
+    initialView.mode === 'original'
+      ? article.mode === 'original'
+      : (article.mode === initialView.mode && article.completed) ||
+        (article.mode === 'original' && article.settled && !article.busy);
+  const restoreAppliedRef = useRef(false);
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const saved = scrollOffsets.get(arxivId);
+    // `applied` is local to this effect run: the immediate apply plus its
+    // rAF/timeout retries may re-assert the position while the layout still
+    // settles (KaTeX, images). `restoreAppliedRef` spans runs so a later
+    // run (e.g. a mid-session mode toggle) never yanks the reader again.
+    let applied = false;
+    const apply = () => {
+      if (userIntentRef.current) return;
+      if (!viewReady) return;
+      if (saved === undefined || saved <= 0) return;
+      if (restoreAppliedRef.current && !applied) return;
+      for (const el of scrollContainers(main)) el.scrollTop = saved;
+      applied = true;
+      restoreAppliedRef.current = true;
+    };
 
     // Apply immediately, again on the next frames (DSH may reset its
     // scrollport in a later effect when the view switches), and once more
@@ -279,21 +332,11 @@ export default function Reader({
     const retry = window.setTimeout(apply, 400);
 
     return () => {
-      window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('wheel', markUser);
-      window.removeEventListener('touchstart', markUser);
-      window.removeEventListener('keydown', markUser, true);
       cancelAnimationFrame(rafA);
       cancelAnimationFrame(rafB);
       window.clearTimeout(retry);
-      for (const el of scrollables()) {
-        if (el.scrollTop > 0) {
-          scrollOffsets.set(arxivId, el.scrollTop);
-          break;
-        }
-      }
     };
-  }, [paper, arxivId]);
+  }, [paper, arxivId, viewReady]);
 
   const load = useCallback(async () => {
     try {
@@ -307,7 +350,10 @@ export default function Reader({
       setError('');
       if (body.status === 'ready') {
         try {
-          const translationResponse = await fetch(`${paperUrl(arxivId)}/translation?lang=zh-CN`, { cache: 'no-store' });
+          const translationResponse = await fetch(
+            `${paperUrl(arxivId)}/translation?lang=${encodeURIComponent(initialView.lang)}`,
+            { cache: 'no-store' },
+          );
           if (translationResponse.ok) setInitialTranslation((await translationResponse.json()) as NonNullable<InitialTranslation>);
         } catch {
           /* leave null */
@@ -316,7 +362,7 @@ export default function Reader({
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Failed to load paper');
     }
-  }, [arxivId]);
+  }, [arxivId, initialView.lang]);
 
   useEffect(() => {
     void load();
@@ -457,7 +503,15 @@ export default function Reader({
               )}
             </div>
           ) : (
-            <TranslationPanel arxivId={arxivId} markdown={paper.markdown} initial={initialTranslation} initialMode={initialMode} />
+            <TranslationPanel
+              arxivId={arxivId}
+              markdown={paper.markdown}
+              initial={initialTranslation}
+              initialMode={initialView.mode}
+              initialLang={initialView.lang}
+              onViewChange={onViewChange}
+              onArticleState={onArticleState}
+            />
           )}
         </main>
       </div>

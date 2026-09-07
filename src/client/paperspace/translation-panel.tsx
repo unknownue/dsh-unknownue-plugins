@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Article, BilingualArticle } from './markdown';
 import { paperUrl } from './api';
+import type { TranslationViewState } from './view-state';
 import type { Lang, TranslationJob, TranslationSnapshot, ViewMode } from './types';
 
 export type InitialTranslation = (TranslationSnapshot & { job: TranslationJob | null }) | null;
@@ -37,24 +38,70 @@ export default function TranslationPanel({
   markdown,
   initial,
   initialMode = 'original',
+  initialLang = 'zh-CN',
+  onViewChange,
+  onArticleState,
 }: {
   arxivId: string;
   markdown: string;
   initial: InitialTranslation;
   initialMode?: ViewMode;
+  initialLang?: Lang;
+  /** Fired on user-initiated view changes (language or 原文/译文/双语 pick). */
+  onViewChange?: (view: TranslationViewState) => void;
+  /** Fired when the article actually rendered changes (mode or snapshot status). */
+  onArticleState?: (state: { mode: ViewMode; completed: boolean; settled: boolean; busy: boolean }) => void;
 }) {
-  const [lang, setLang] = useState<Lang>('zh-CN');
+  const [lang, setLang] = useState<Lang>(initialLang);
   const [snapshot, setSnapshot] = useState<TranslationSnapshot | null>(initial);
   const [job, setJob] = useState<TranslationJob | null>(initial?.job ?? null);
   const [mode, setMode] = useState<ViewMode>(initialMode);
   const [busyAction, setBusyAction] = useState(false);
   const [actionError, setActionError] = useState('');
+  // Set once the first translation lookup for the current language resolves —
+  // either a snapshot (any status), a confirmed 404, or a network failure.
+  // The reader uses it to tell "still looking up" from "no translation, the
+  // fallback-original layout is final".
+  const [lookupSettled, setLookupSettled] = useState(false);
 
   const jobStatus = job?.status;
   const snapshotStatus = snapshot?.status;
   const busy = jobStatus === 'pending' || jobStatus === 'running' || snapshotStatus === 'pending' || snapshotStatus === 'running';
   const failed = jobStatus === 'failed' || (!busy && snapshotStatus === 'failed');
-  const done = snapshotStatus === 'completed';
+
+  // The panel renders the article with the selected mode only while a
+  // completed snapshot exists for the current language; otherwise it falls
+  // back to the original markdown (e.g. restored bilingual with no
+  // translation yet). Report the EFFECTIVE mode so the reader can delay its
+  // scroll restore until the layout actually matches.
+  const completed = snapshot?.status === 'completed';
+  const effectiveMode: ViewMode = completed ? mode : 'original';
+  useEffect(() => {
+    onArticleState?.({ mode: effectiveMode, completed, settled: lookupSettled, busy });
+  }, [effectiveMode, completed, lookupSettled, busy, onArticleState]);
+
+  const changeLang = useCallback(
+    (next: Lang) => {
+      setLang(next);
+      setMode('original');
+      // The previous language's snapshot must not render under the new label.
+      setSnapshot(null);
+      setJob(null);
+      setLookupSettled(false);
+      onViewChange?.({ lang: next, mode: 'original' });
+    },
+    [onViewChange],
+  );
+
+  const changeMode = useCallback(
+    (next: ViewMode) => {
+      setMode(next);
+      onViewChange?.({ lang, mode: next });
+    },
+    [lang, onViewChange],
+  );
+
+  const done = completed;
   const progressPercent = job && job.total > 0 ? Math.min(100, Math.round((job.progress / job.total) * 100)) : 0;
 
   const translatedMarkdown = useMemo(() => {
@@ -69,6 +116,7 @@ export default function TranslationPanel({
         const body = (await response.json()) as TranslationSnapshot & { job: TranslationJob | null };
         setSnapshot(body);
         setJob(body.job ?? null);
+        setLookupSettled(true);
         return;
       }
       if (response.status === 404) {
@@ -80,9 +128,11 @@ export default function TranslationPanel({
         } else if (jobResponse.status === 404) {
           setJob(null);
         }
+        setLookupSettled(true);
       }
     } catch {
       /* transient network error — keep last known state */
+      setLookupSettled(true);
     }
   }, [arxivId, lang]);
 
@@ -107,7 +157,7 @@ export default function TranslationPanel({
       if (!response.ok) throw new Error(body?.message ?? body?.code ?? 'Failed to start translation');
       setJob(body.job ?? null);
       setSnapshot(null);
-      setMode('original');
+      changeMode('original');
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Failed to start translation');
     } finally {
@@ -135,7 +185,7 @@ export default function TranslationPanel({
     }
     setSnapshot(null);
     setJob(null);
-    setMode('original');
+    changeMode('original');
   }
 
   return (
@@ -144,10 +194,7 @@ export default function TranslationPanel({
         <select
           className="translation-lang"
           value={lang}
-          onChange={event => {
-            setLang(event.target.value as Lang);
-            setMode('original');
-          }}
+          onChange={event => changeLang(event.target.value as Lang)}
           aria-label="Translation language"
         >
           {LANGS.map(entry => (
@@ -163,7 +210,7 @@ export default function TranslationPanel({
           <>
             <div className="translation-modes" role="group" aria-label="Translation view">
               {([['original', '原文'], ['translated', '译文'], ['bilingual', '双语']] as Array<[ViewMode, string]>).map(([value, label]) => (
-                <button type="button" className={'translation-mode ' + (mode === value ? 'active' : '')} onClick={() => setMode(value)} key={value}>
+                <button type="button" className={'translation-mode ' + (mode === value ? 'active' : '')} onClick={() => changeMode(value)} key={value}>
                   {label}
                 </button>
               ))}
@@ -209,9 +256,12 @@ export default function TranslationPanel({
 
       {mode === 'original' && <Article markdown={markdown} />}
       {mode === 'translated' && <Article markdown={translatedMarkdown ?? markdown} />}
-      {mode === 'bilingual' && snapshot && snapshot.status === 'completed' && (
-        <BilingualArticle markdown={markdown} offsets={snapshot.offsets} paragraphs={snapshot.paragraphs} />
-      )}
+      {mode === 'bilingual' &&
+        (completed && snapshot ? (
+          <BilingualArticle markdown={markdown} offsets={snapshot.offsets} paragraphs={snapshot.paragraphs} />
+        ) : (
+          <Article markdown={markdown} />
+        ))}
     </>
   );
 }
