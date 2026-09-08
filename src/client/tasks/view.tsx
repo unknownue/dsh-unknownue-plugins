@@ -267,7 +267,11 @@ export default function TasksView({ t }: TasksViewProps) {
       {mode === 'board' ? (
         <div className="tk-board">
           {TASK_STATUSES.map(status => {
-            const cards = visible.filter(card => card.status === status);
+            // Newest-first within each column; the stored rank stays the
+            // tie-break for equal timestamps (Array.sort is stable).
+            const cards = visible
+              .filter(card => card.status === status)
+              .sort((a, b) => b.updatedAt - a.updatedAt);
             return (
               <section
                 className="tk-col"

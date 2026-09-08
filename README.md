@@ -175,7 +175,8 @@ mock-LLM e2e for translation and the SSE chat tool loop). See
 A **任务** tab (between 文件 and 论文) hosts a personal task board the user
 maintains entirely by hand — there is **no agent surface** (no model-facing
 tools, no session-log events, no dispatch). Four kanban columns (待办 /
-进行中 / 阻塞 / 完成) with drag-and-drop between columns, a dense list view
+进行中 / 阻塞 / 完成), each ordered **newest-updated first**, with
+drag-and-drop between columns, a dense list view
 (including archived cards), a card editor (title, Markdown body, status,
 priority, optional due date, archive/restore/delete), and a one-click
 **archive-all button on the Done column header** (confirm-guarded).
