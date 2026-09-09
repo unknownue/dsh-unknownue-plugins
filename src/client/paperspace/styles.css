@@ -264,6 +264,11 @@ button.paper-item-title:hover { text-decoration:underline; }
 .ps-row { display:grid; grid-template-columns:240px minmax(0,1fr); align-items:center; gap:12px; margin-top:10px; }
 .ps-row > span { font-size:12px; color:var(--ps-text-2, #71717a); }
 .ps-row input,.ps-row select { width:100%; padding:8px 10px; border:1px solid var(--ps-line-strong, #d4d4d8); border-radius:8px; background:var(--ps-bg, #fff); color:var(--ps-text, #18181b); }
+/* tasks section: preset list editor rows inside a ps-row */
+.preset-editor { display:flex; flex-direction:column; gap:6px; }
+.preset-editor-row { display:flex; align-items:center; gap:8px; }
+.preset-editor-row input { flex:1; min-width:0; }
+.preset-editor-row .button.compact { flex:none; }
 .ps-toggle { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 14px; border:1px solid var(--ps-line, #e4e4e7); border-radius:10px; background:var(--ps-bg, #fff); cursor:pointer; }
 .ps-toggle input { accent-color:var(--ps-brand, #18181b); }
 .ps-toggle strong { color:var(--ps-text, #18181b); }

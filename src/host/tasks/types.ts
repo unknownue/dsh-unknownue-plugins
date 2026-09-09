@@ -71,10 +71,18 @@ export interface PartialTasksConfig {
 export interface TasksSettingsFile {
   version: 1;
   dataDir: string;
+  /**
+   * User-configured quick-add subtask presets for the new-task editor.
+   * Absent → the client falls back to its built-in localized presets;
+   * present (possibly `[]`) → the user's own list replaces them.
+   */
+  presetTodos?: string[];
 }
 
 export interface TasksSettingsInput {
   dataDir: string;
+  /** `undefined` → keep the persisted list; `null` → reset to built-in defaults. */
+  presetTodos?: string[] | null;
 }
 
 // ── DSH seams (minimal honest contracts, same approach as src/host/types.ts) ─

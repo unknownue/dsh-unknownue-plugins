@@ -1,11 +1,14 @@
 /**
  * TasksView — the 任务 tab body: a kanban board (four status columns with
  * drag-and-drop between/within columns) and a dense list view over the same
- * cards, plus the card editor modal.
+ * cards, plus the card editor modal and the archive drawer (lightweight
+ * searchable browser for archived cards, opened from the header).
  *
  * Purely user-maintained: every write goes straight to the host routes, there
  * is no agent interaction. Freshness is revision polling (refetch only when
- * the host's `meta.revision` moved).
+ * the host's `meta.revision` moved). The board snapshot always includes
+ * archived cards so the drawer can read them without an extra request; the
+ * board/list views themselves render active cards only.
  */
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import React from 'react';
@@ -21,10 +24,13 @@ import {
   deleteCard,
   fetchBoard,
   fetchRevision,
+  fetchTasksSettings,
   moveCard,
   restoreCard,
   updateCard,
 } from './api';
+import ArchiveDrawer from './archive';
+import { formatDueLabel, formatUpdated, sortTodosUncheckedFirst, tagStyle, todoDoneCount } from './shared';
 
 export type TasksLocale = (key: string) => string;
 
@@ -36,6 +42,23 @@ const PRIORITIES: readonly TaskPriority[] = ['low', 'medium', 'high'];
 const POLL_MS = 5000;
 /** Checklist items shown directly on a board card before folding into +n. */
 const CARD_TODO_PREVIEW = 3;
+/** Subtask count above which the editor list gets the fold/expand toggle. */
+const TODO_FOLD_LIMIT = 8;
+
+/**
+ * Built-in quick-add subtask presets for the new-task editor (locale keys —
+ * the translated text becomes the subtask content). Shown only when creating
+ * a card; checked presets are appended as draft subtasks, unchecking removes
+ * the matching row again.
+ */
+const PRESET_TODOS = [
+  'todos.preset.requirements',
+  'todos.preset.design',
+  'todos.preset.implement',
+  'todos.preset.selfcheck',
+  'todos.preset.review',
+  'todos.preset.docs',
+] as const;
 
 type DueMode = 'none' | 'point' | 'range';
 
@@ -65,12 +88,6 @@ function joinDueTime(date: string, time: string): string {
   return time === '' ? date : `${date}T${time}`;
 }
 
-/** Compact display label: `09-10 18:00` / `09-10 14:00 ~ 09-12`. */
-function formatDueLabel(due: TaskDue): string {
-  if (due.kind === 'point') return due.at.replace('T', ' ');
-  return `${due.start.replace('T', ' ')} ~ ${due.end.replace('T', ' ')}`;
-}
-
 /** The moment a card is late: the deadline itself, or the range end. */
 function dueDeadline(due: TaskDue): string {
   return due.kind === 'point' ? due.at : due.end;
@@ -90,67 +107,48 @@ function dueInvalid(due: TaskDue | null): boolean {
   return splitDueTime(due.start).date === '' || splitDueTime(due.end).date === '' || due.start > due.end;
 }
 
-function formatUpdated(ms: number): string {
-  const date = new Date(ms);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
-
-function todoDoneCount(card: TaskCard): number {
-  return card.todos.filter(item => item.done).length;
-}
-
-/** Unchecked subtasks first (stable within each group). */
-function sortTodosUncheckedFirst(items: readonly TaskTodo[]): TaskTodo[] {
-  return [...items].sort((a, b) => Number(a.done) - Number(b.done));
-}
-
-/**
- * Fixed tag palette: white text stays readable on every entry in both light
- * and dark themes. The text hash picks an index, so one tag name always gets
- * the same color without any stored color data.
- */
-const TAG_PALETTE = [
-  '#ef4444', // red
-  '#f97316', // orange
-  '#f59e0b', // amber
-  '#65a30d', // lime
-  '#22c55e', // green
-  '#14b8a6', // teal
-  '#06b6d4', // cyan
-  '#3b82f6', // blue
-  '#6366f1', // indigo
-  '#8b5cf6', // violet
-  '#d946ef', // fuchsia
-  '#ec4899', // pink
-] as const;
-
-/** Stable hash of the tag text (same value every render/session). */
-function tagHash(name: string): number {
-  let hash = 0;
-  for (const character of name) {
-    hash = (hash * 31 + (character.codePointAt(0) ?? 0)) | 0;
-  }
-  return Math.abs(hash);
-}
-
-/** Tag chip inline style: text hash → fixed palette entry. */
-function tagStyle(name: string): { backgroundColor: string } {
-  return { backgroundColor: TAG_PALETTE[tagHash(name) % TAG_PALETTE.length] };
-}
-
 export default function TasksView({ t }: TasksViewProps) {
   const [board, setBoard] = useState<TaskCard[]>([]);
   const [revision, setRevision] = useState(-1);
   const [error, setError] = useState('');
   const [mode, setMode] = useState<'board' | 'list'>('board');
-  const [showArchived, setShowArchived] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [restoringIds, setRestoringIds] = useState<ReadonlySet<string>>(new Set());
   const [editing, setEditing] = useState<TaskCard | 'new' | null>(null);
   const [archivingAll, setArchivingAll] = useState(false);
+  /** User-configured quick-add presets; undefined → built-in localized ones. */
+  const [presets, setPresets] = useState<string[] | undefined>(undefined);
   const revisionRef = useRef(-1);
 
-  const refresh = useCallback(async (includeArchived?: boolean) => {
+  // Load the user's preset subtasks once; a failed fetch keeps the built-ins.
+  useEffect(() => {
+    let alive = true;
+    void fetchTasksSettings()
+      .then(view => {
+        if (alive) setPresets(view.settings?.presetTodos);
+      })
+      .catch(() => {
+        // host route unavailable → built-in presets remain
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /** Open the new-task editor with the freshest preset list. */
+  const openNewTask = useCallback(async () => {
     try {
-      const next = await fetchBoard(includeArchived ?? false);
+      const view = await fetchTasksSettings();
+      setPresets(view.settings?.presetTodos);
+    } catch {
+      // keep whatever presets we already have (or the built-ins)
+    }
+    setEditing('new');
+  }, []);
+
+  const refresh = useCallback(async (includeArchived = true) => {
+    try {
+      const next = await fetchBoard(includeArchived);
       revisionRef.current = next.revision;
       setBoard(next.tasks);
       setRevision(next.revision);
@@ -164,23 +162,20 @@ export default function TasksView({ t }: TasksViewProps) {
     void refresh();
   }, [refresh]);
 
-  // The board view never shows archived cards; the list view can opt in.
-  useEffect(() => {
-    if (mode === 'list' && showArchived) void refresh(true);
-  }, [mode, showArchived, refresh]);
-
+  // The board always fetches archived cards too: the archive drawer reads
+  // them from the same snapshot, while both views render only active cards.
   useEffect(() => {
     const timer = setInterval(() => {
       void fetchRevision()
         .then(next => {
-          if (next.revision !== revisionRef.current) void refresh(showArchived);
+          if (next.revision !== revisionRef.current) void refresh(true);
         })
         .catch(() => {
           // poll failures are silent; the next tick retries
         });
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [refresh, showArchived]);
+  }, [refresh]);
 
   const move = useCallback(
     async (id: string, status: TaskStatus) => {
@@ -225,8 +220,31 @@ export default function TasksView({ t }: TasksViewProps) {
     [refresh, t],
   );
 
+  /** Unarchive a card from the drawer; the board snapshot refreshes after. */
+  const restoreFromArchive = useCallback(
+    async (id: string) => {
+      setRestoringIds(prev => new Set(prev).add(id));
+      try {
+        await restoreCard(id);
+        await refresh(true);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setRestoringIds(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    },
+    [refresh],
+  );
+
   const archivedCount = board.filter(card => card.archived).length;
-  const visible = mode === 'board' ? board.filter(card => !card.archived) : board;
+  /** Active cards only — archived ones live in the archive drawer. */
+  const visible = board.filter(card => !card.archived);
+  /** Archived cards for the drawer, newest-updated first. */
+  const archivedCards = board.filter(card => card.archived).sort((a, b) => b.updatedAt - a.updatedAt);
   /** Every tag already in use on the board, for the editor's quick-add row. */
   const knownTags = useMemo(() => [...new Set(board.flatMap(card => card.tags))].sort((a, b) => a.localeCompare(b)), [board]);
 
@@ -241,18 +259,15 @@ export default function TasksView({ t }: TasksViewProps) {
             {t('mode.list')}
           </button>
         </div>
-        {mode === 'list' && (
-          <label className="tk-archived-toggle">
-            <input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} />
-            {t('list.showArchived')}
-            {archivedCount > 0 ? ` (${archivedCount})` : ''}
-          </label>
-        )}
         <div className="tk-actions">
-          <button type="button" className="tk-btn" onClick={() => void refresh(showArchived)}>
+          <button type="button" className="tk-btn" onClick={() => setArchiveOpen(true)}>
+            {t('archive.open')}
+            {archivedCount > 0 && <span className="tk-count tk-archived-count">{archivedCount}</span>}
+          </button>
+          <button type="button" className="tk-btn" onClick={() => void refresh(true)}>
             {t('board.refresh')}
           </button>
-          <button type="button" className="tk-btn tk-btn-primary" onClick={() => setEditing('new')}>
+          <button type="button" className="tk-btn tk-btn-primary" onClick={() => void openNewTask()}>
             {t('board.new')}
           </button>
         </div>
@@ -373,12 +388,11 @@ export default function TasksView({ t }: TasksViewProps) {
                 <th>{t('list.due')}</th>
                 <th>{t('list.tags')}</th>
                 <th>{t('list.updated')}</th>
-                <th>{t('list.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {visible.map(card => (
-                <tr key={card.id} className={card.archived ? 'tk-row-archived' : undefined} onClick={() => setEditing(card)}>
+                <tr key={card.id} onClick={() => setEditing(card)}>
                   <td className="tk-cell-title">
                     {card.title}
                     {card.todos.length > 0 && <span className="tk-todo-count">{todoDoneCount(card)}/{card.todos.length}</span>}
@@ -396,23 +410,11 @@ export default function TasksView({ t }: TasksViewProps) {
                     </div>
                   </td>
                   <td className="tk-cell-muted">{formatUpdated(card.updatedAt)}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="tk-link-btn"
-                      onClick={event => {
-                        event.stopPropagation();
-                        setEditing(card);
-                      }}
-                    >
-                      {t('list.edit')}
-                    </button>
-                  </td>
                 </tr>
               ))}
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="tk-cell-muted">
+                  <td colSpan={6} className="tk-cell-muted">
                     {t('board.empty')}
                   </td>
                 </tr>
@@ -432,12 +434,23 @@ export default function TasksView({ t }: TasksViewProps) {
           card={editing}
           t={t}
           knownTags={knownTags}
+          presets={presets}
           onClose={() => setEditing(null)}
           onSaved={async includeArchived => {
             setEditing(null);
             await refresh(includeArchived);
           }}
           onError={cause => setError(String(cause))}
+        />
+      )}
+
+      {archiveOpen && (
+        <ArchiveDrawer
+          t={t}
+          cards={archivedCards}
+          restoring={restoringIds}
+          onClose={() => setArchiveOpen(false)}
+          onRestore={id => void restoreFromArchive(id)}
         />
       )}
     </div>
@@ -451,12 +464,14 @@ interface CardEditorProps {
   t: TasksLocale;
   /** Tags already used across the board (quick-add suggestions). */
   knownTags: string[];
+  /** User-configured quick-add presets; undefined → built-in localized ones. */
+  presets?: string[];
   onClose(): void;
   onSaved(includeArchived: boolean): Promise<void>;
   onError(message: string): void;
 }
 
-function CardEditor({ card, t, knownTags, onClose, onSaved, onError }: CardEditorProps) {
+function CardEditor({ card, t, knownTags, presets, onClose, onSaved, onError }: CardEditorProps) {
   const existing = card === 'new' ? null : card;
   const [title, setTitle] = useState(existing?.title ?? '');
   const [body, setBody] = useState(existing?.body ?? '');
@@ -468,6 +483,12 @@ function CardEditor({ card, t, knownTags, onClose, onSaved, onError }: CardEdito
   const [tags, setTags] = useState<string[]>(existing?.tags ?? []);
   const [newTag, setNewTag] = useState('');
   const [busy, setBusy] = useState(false);
+  /** Row currently in inline-edit mode (stable key, not an array index). */
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [todosExpanded, setTodosExpanded] = useState(false);
+  /** Set while Esc cancels so the ensuing blur does not commit. */
+  const cancellingRef = useRef(false);
 
   function setDueMode(next: DueMode) {
     if (next === 'none') {
@@ -494,6 +515,8 @@ function CardEditor({ card, t, knownTags, onClose, onSaved, onError }: CardEdito
   const sortedTodos = sortTodosUncheckedFirst(todos);
   /** Known tags not yet on this card, offered as quick-add chips. */
   const suggestedTags = knownTags.filter(tag => !tags.includes(tag));
+  /** Effective quick-add presets: user-configured texts or built-in localized ones. */
+  const presetItems = presets !== undefined ? presets.map(text => ({ key: text, label: text })) : PRESET_TODOS.map(key => ({ key, label: t(key) }));
 
   function toggleDraftTodo(index: number) {
     setTodos(sortTodosUncheckedFirst(sortedTodos.map((item, i) => (i === index ? { ...item, done: !item.done } : item))));
@@ -503,7 +526,65 @@ function CardEditor({ card, t, knownTags, onClose, onSaved, onError }: CardEdito
     setTodos(sortTodosUncheckedFirst(sortedTodos.map((item, i) => (i === index ? { ...item, content } : item))));
   }
 
+  /** Stable row identity (matches the `<li>` key): draft rows by slot, saved rows by id. */
+  function keyOf(item: TaskTodo, index: number): string {
+    return item.id === '' ? `draft-${index}` : item.id;
+  }
+
+  function startTodoEdit(key: string, content: string) {
+    cancellingRef.current = false;
+    setEditingKey(key);
+    setEditDraft(content);
+  }
+
+  function commitTodoEdit() {
+    if (editingKey === null) return;
+    const index = sortedTodos.findIndex((item, i) => keyOf(item, i) === editingKey);
+    if (index !== -1) {
+      const content = editDraft.trim();
+      if (content !== '') editDraftTodo(index, content);
+    }
+    setEditingKey(null);
+    setEditDraft('');
+  }
+
+  function cancelTodoEdit() {
+    cancellingRef.current = true;
+    setEditingKey(null);
+    setEditDraft('');
+  }
+
+  /** True when a row already carries the preset's text. */
+  function isPresetAdded(label: string): boolean {
+    return todos.some(item => item.content === label);
+  }
+
+  /** Check → append the preset as a draft subtask; uncheck → remove that row. */
+  function togglePreset(label: string, checked: boolean) {
+    const content = label;
+    if (checked) {
+      if (todos.length >= 50 || todos.some(item => item.content === content)) return;
+      setTodos([...todos, { id: '', content, done: false }]);
+      return;
+    }
+    const index = todos.findIndex(item => item.content === content);
+    if (index === -1) return;
+    // Exit edit mode when the row being removed is the one currently edited.
+    if (editingKey !== null) {
+      const editedIndex = sortedTodos.findIndex((item, i) => keyOf(item, i) === editingKey);
+      if (editedIndex !== -1 && sortedTodos[editedIndex].content === content) {
+        setEditingKey(null);
+        setEditDraft('');
+      }
+    }
+    setTodos(todos.filter((_, i) => i !== index));
+  }
+
   function removeDraftTodo(index: number) {
+    if (editingKey === keyOf(sortedTodos[index], index)) {
+      setEditingKey(null);
+      setEditDraft('');
+    }
     setTodos(sortedTodos.filter((_, i) => i !== index));
   }
 
@@ -694,25 +775,82 @@ function CardEditor({ card, t, knownTags, onClose, onSaved, onError }: CardEdito
           <span>
             {t('todos.title')}
             {todos.length > 0 && <span className="tk-todo-progress">{todos.filter(item => item.done).length}/{todos.length}</span>}
+            {todos.length > TODO_FOLD_LIMIT && (
+              <button type="button" className="tk-link-btn tk-todo-fold" onClick={() => setTodosExpanded(value => !value)}>
+                {todosExpanded ? t('todos.collapse') : t('todos.expand')}
+              </button>
+            )}
           </span>
-          <ul className="tk-todos">
-            {sortedTodos.map((item, index) => (
-              <li key={item.id === '' ? `draft-${index}` : item.id} className={item.done ? 'tk-todo-row tk-todo-done' : 'tk-todo-row'}>
-                <label className="tk-todo-check">
-                  <input type="checkbox" checked={item.done} aria-label={t('todos.toggle')} onChange={() => toggleDraftTodo(index)} />
-                </label>
-                <input
-                  className="tk-input tk-todo-input"
-                  value={item.content}
-                  maxLength={200}
-                  aria-label={t('todos.edit')}
-                  onChange={event => editDraftTodo(index, event.target.value)}
-                />
-                <button type="button" className="tk-todo-remove" aria-label={t('todos.remove')} onClick={() => removeDraftTodo(index)}>
-                  ✕
-                </button>
-              </li>
-            ))}
+          <ul className={todosExpanded ? 'tk-todos tk-todos-expanded' : 'tk-todos'}>
+            {sortedTodos.map((item, index) => {
+              const key = keyOf(item, index);
+              const isEditing = editingKey === key;
+              return (
+                <li key={key} className={item.done ? 'tk-todo-row tk-todo-done' : 'tk-todo-row'}>
+                  <label className="tk-todo-check">
+                    <input
+                      type="checkbox"
+                      checked={item.done}
+                      disabled={isEditing}
+                      aria-label={t('todos.toggle')}
+                      onChange={() => toggleDraftTodo(index)}
+                    />
+                  </label>
+                  {isEditing ? (
+                    <>
+                      <input
+                        className="tk-input tk-todo-input"
+                        value={editDraft}
+                        maxLength={200}
+                        aria-label={t('todos.edit')}
+                        autoFocus
+                        onChange={event => setEditDraft(event.target.value)}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            commitTodoEdit();
+                          } else if (event.key === 'Escape') {
+                            event.preventDefault();
+                            cancelTodoEdit();
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!cancellingRef.current) commitTodoEdit();
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="tk-todo-edit"
+                        aria-label={t('editor.save')}
+                        title={t('editor.save')}
+                        onClick={commitTodoEdit}
+                      >
+                        ✓
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="tk-todo-content">{item.content}</span>
+                      <button
+                        type="button"
+                        className="tk-todo-edit"
+                        aria-label={t('todos.edit')}
+                        title={t('todos.edit')}
+                        onClick={() => startTodoEdit(key, item.content)}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                          <path d="M10.8 2.2 13.8 5.2 5.6 13.4a1.5 1.5 0 0 1-.6.4L2.6 14.5l.7-2.4a1.5 1.5 0 0 1 .4-.6L10.8 2.2Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                          <path d="M9.6 3.4 12.6 6.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                        </svg>
+                      </button>
+                    </>
+                  )}
+                  <button type="button" className="tk-todo-remove" aria-label={t('todos.remove')} onClick={() => removeDraftTodo(index)}>
+                    ✕
+                  </button>
+                </li>
+              );
+            })}
             {todos.length === 0 && <li className="tk-todo-empty">{t('todos.empty')}</li>}
           </ul>
           <div className="tk-todo-add">
@@ -733,6 +871,26 @@ function CardEditor({ card, t, knownTags, onClose, onSaved, onError }: CardEdito
               {t('todos.add')}
             </button>
           </div>
+          {existing === null && presetItems.length > 0 && (
+            <div className="tk-field">
+              <span>{t('todos.presets')}</span>
+              <ul className="tk-todo-presets">
+                {presetItems.map(item => (
+                  <li key={item.key}>
+                    <label className="tk-preset-row">
+                      <input
+                        type="checkbox"
+                        checked={isPresetAdded(item.label)}
+                        disabled={!isPresetAdded(item.label) && todos.length >= 50}
+                        onChange={event => togglePreset(item.label, event.target.checked)}
+                      />
+                      <span className="tk-todo-content">{item.label}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <footer className="tk-dialog-foot">

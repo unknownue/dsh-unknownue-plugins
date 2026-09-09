@@ -423,6 +423,39 @@ async function main() {
   const onDisk = JSON.parse(readFileSync(tasksSettingsPath(), 'utf8')) as Record<string, any>;
   check('settings file shape { version: 1, dataDir }', onDisk.version === 1 && onDisk.dataDir === customDir);
 
+  // ── preset-todo settings ─────────────────────────────────────────────────
+  const withPresets = await call(api2, 'POST', `${TASKS_API}/settings`, { data_dir: customDir, preset_todos: [' 需求确认 ', '方案设计', '需求确认'] });
+  check('preset_todos accepted without restartRequired', withPresets.status === 200 && withPresets.body.restartRequired === false, JSON.stringify(withPresets.body));
+  const presetsOnDisk = loadSettingsFile()?.presetTodos;
+  check(
+    'preset list persisted trimmed + deduped',
+    presetsOnDisk !== undefined && presetsOnDisk.length === 2 && presetsOnDisk[0] === '需求确认' && presetsOnDisk[1] === '方案设计',
+    JSON.stringify(presetsOnDisk),
+  );
+
+  const gotPresets = await call(api2, 'GET', `${TASKS_API}/settings`);
+  const gotPresetList = (gotPresets.body.settings as Record<string, any>).presetTodos as Array<string>;
+  check('GET /settings returns presets', gotPresets.status === 200 && Array.isArray(gotPresetList) && gotPresetList.length === 2, JSON.stringify(gotPresets.body.settings));
+
+  const keepPresets = await call(api2, 'POST', `${TASKS_API}/settings`, { data_dir: customDir });
+  check('dataDir-only save keeps presets', keepPresets.status === 200 && loadSettingsFile()?.presetTodos?.length === 2, JSON.stringify(loadSettingsFile()?.presetTodos));
+
+  const tooManyPresets = await call(api2, 'POST', `${TASKS_API}/settings`, { data_dir: customDir, preset_todos: Array.from({ length: 21 }, (_, index) => `p${index}`) });
+  check('21 presets → 400 VALIDATION_ERROR', tooManyPresets.status === 400 && tooManyPresets.body.code === 'VALIDATION_ERROR');
+
+  const blankPreset = await call(api2, 'POST', `${TASKS_API}/settings`, { data_dir: customDir, preset_todos: ['   '] });
+  check('blank preset → 400 VALIDATION_ERROR', blankPreset.status === 400 && blankPreset.body.code === 'VALIDATION_ERROR');
+
+  const nonStringPreset = await call(api2, 'POST', `${TASKS_API}/settings`, { data_dir: customDir, preset_todos: [42] });
+  check('non-string preset → 400 VALIDATION_ERROR', nonStringPreset.status === 400 && nonStringPreset.body.code === 'VALIDATION_ERROR');
+
+  const resetPresets = await call(api2, 'POST', `${TASKS_API}/settings`, { data_dir: customDir, preset_todos: null });
+  check('preset_todos null resets to built-in defaults', resetPresets.status === 200 && loadSettingsFile()?.presetTodos === undefined, JSON.stringify(loadSettingsFile()?.presetTodos));
+
+  const emptyPresets = await call(api2, 'POST', `${TASKS_API}/settings`, { data_dir: customDir, preset_todos: [] });
+  const emptyPresetList = loadSettingsFile()?.presetTodos;
+  check('empty preset list persists (hides the panel)', emptyPresets.status === 200 && Array.isArray(emptyPresetList) && emptyPresetList.length === 0, JSON.stringify(emptyPresetList));
+
   // ── in-memory runtime (tests-only dataDir) ────────────────────────────────
   // PGlite's WASM module declares 2048 memory pages minimum (= 128 MB), so
   // anything below 128 MB fails instantiation.

@@ -8,7 +8,8 @@ export const TASKS_API = '/dsh-unknownue-plugins/tasks/api';
 export type TaskStatus = 'todo' | 'in_progress' | 'blocked' | 'done';
 export type TaskPriority = 'low' | 'medium' | 'high';
 
-export const TASK_STATUSES: readonly TaskStatus[] = ['todo', 'in_progress', 'blocked', 'done'];
+/** Board column order (also the editor's status dropdown order). */
+export const TASK_STATUSES: readonly TaskStatus[] = ['todo', 'in_progress', 'done', 'blocked'];
 
 /** One checkable subtask (id may be '' for not-yet-created draft items). */
 export interface TaskTodo {
@@ -55,6 +56,11 @@ export interface Board {
 export interface TasksSettingsFile {
   version: number;
   dataDir: string;
+  /**
+   * User-configured quick-add subtask presets for the new-task editor.
+   * Absent → built-in localized presets; `[]` → panel hidden.
+   */
+  presetTodos?: string[];
 }
 
 export interface TasksSettingsView {
@@ -132,6 +138,6 @@ export function fetchTasksSettings(): Promise<TasksSettingsView> {
   return request<TasksSettingsView>('/settings');
 }
 
-export function saveTasksSettings(input: { data_dir: string }): Promise<{ ok: boolean; restartRequired?: boolean }> {
+export function saveTasksSettings(input: { data_dir: string; preset_todos?: string[] | null }): Promise<{ ok: boolean; restartRequired?: boolean }> {
   return request<{ ok: boolean; restartRequired?: boolean }>('/settings', { method: 'POST', body: JSON.stringify(input) });
 }

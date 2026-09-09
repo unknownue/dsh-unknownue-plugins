@@ -93,7 +93,13 @@ const moveSchema = z
   })
   .strict();
 
-const settingsSchema = z.object({ data_dir: z.string().min(1).max(1024) }).strict();
+const settingsSchema = z
+  .object({
+    data_dir: z.string().min(1).max(1024),
+    /** Quick-add subtask presets: `null` resets to built-in defaults. */
+    preset_todos: z.array(z.string().trim().min(1).max(200)).max(20).nullable().optional(),
+  })
+  .strict();
 
 const idSchema = z.string().min(1).max(64);
 
@@ -228,7 +234,7 @@ export function registerRoutes(webServer: WebServer, host: TasksHost): void {
           }
           if (method === 'POST') {
             const input = settingsSchema.parse(await readBody(req));
-            const result = await host.save({ dataDir: input.data_dir });
+            const result = await host.save({ dataDir: input.data_dir, presetTodos: input.preset_todos });
             if (!result.ok) return json(res, 400, { code: 'SETTINGS_INVALID', message: result.error ?? 'settings save failed' });
             return json(res, 200, result);
           }

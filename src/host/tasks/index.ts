@@ -11,7 +11,7 @@
  */
 import { createTasksRuntime, type TasksRuntime } from './db';
 import { registerRoutes, type TasksHost } from './routes';
-import { loadSettingsFile, normalizePath, resolveConfig, saveSettingsFile, tasksSettingsPath } from './settings';
+import { loadSettingsFile, normalizePath, normalizePresetTodos, resolveConfig, saveSettingsFile, tasksSettingsPath } from './settings';
 import type { PartialTasksConfig, TasksConfig, TasksHostContext, TasksSettingsFile, TasksSettingsInput } from './types';
 
 const name = 'dsh-unknownue-plugins/tasks';
@@ -53,6 +53,10 @@ export function apply(ctx: TasksHostContext, config: PartialTasksConfig = {}): v
       try {
         const dataDir = normalizePath(input.dataDir);
         const nextFile: TasksSettingsFile = { version: 1, dataDir };
+        // undefined → keep the persisted list; null/array → replace (null
+        // normalizes to undefined, i.e. the field is dropped → built-in defaults).
+        const presetTodos = input.presetTodos === undefined ? file?.presetTodos : normalizePresetTodos(input.presetTodos);
+        if (presetTodos !== undefined) nextFile.presetTodos = presetTodos;
         await saveSettingsFile(nextFile);
         const previous = file?.dataDir ?? row.dataDir;
         const changed = previous !== dataDir;

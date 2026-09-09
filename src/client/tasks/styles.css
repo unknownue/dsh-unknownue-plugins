@@ -217,6 +217,10 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  /* Keep the meta row (priority chip first) from touching the tag chips or
+     subtask rows above it — sibling margins collapse, so the section above
+     always ends up 6px clear instead of sharing an edge. */
+  margin-top: 6px;
 }
 
 .dsh-tasks .tk-prio {
@@ -446,6 +450,11 @@
   cursor: pointer;
 }
 
+.dsh-tasks .tk-todo-check input:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .dsh-tasks .tk-todo-content {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -508,8 +517,15 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 180px;
+  /* Folded by default: taller than before, but still bounded so a 50-item
+     list can't push the dialog's other fields off screen. */
+  max-height: min(340px, 42vh);
   overflow: auto;
+}
+
+.dsh-tasks .tk-todos-expanded {
+  max-height: none;
+  overflow: visible;
 }
 
 .dsh-tasks .tk-todo-row {
@@ -556,6 +572,74 @@
 
 .dsh-tasks .tk-todo-remove:hover {
   color: var(--dsw-alias-state-error-primary);
+}
+
+/* edit-mode trigger + confirm (read-only rows show the pencil, editing rows ✓) */
+.dsh-tasks .tk-todo-edit {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.dsh-tasks .tk-todo-edit:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-state-business-primary);
+}
+
+/* fold/expand toggle next to the subtask progress counter */
+.dsh-tasks .tk-todo-fold {
+  margin-left: 8px;
+  padding: 0;
+  line-height: 16px;
+  vertical-align: 1px;
+}
+
+/* preset quick-add checklist (new-task editor) */
+.dsh-tasks .tk-todo-presets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.dsh-tasks .tk-preset-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.dsh-tasks .tk-preset-row:hover {
+  border-color: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-tasks .tk-preset-row input {
+  accent-color: var(--dsw-alias-state-business-primary);
+  cursor: pointer;
+}
+
+.dsh-tasks .tk-preset-row input:disabled {
+  cursor: default;
 }
 
 .dsh-tasks .tk-todo-empty {
@@ -659,4 +743,111 @@
 
 .dsh-tasks .tk-tag-suggest-chip:hover {
   opacity: 0.85;
+}
+
+/* ── archive drawer ─────────────────────────────────── */
+.dsh-tasks .tk-archive-dialog {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(560px, 100%);
+  max-height: 80vh;
+  padding: 16px 18px;
+  border: 1px solid var(--dsw-alias-border-inverted);
+  border-radius: 16px;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-shadow-lv3);
+}
+
+.dsh-tasks .tk-archive-search {
+  flex: none;
+}
+
+.dsh-tasks .tk-archive-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dsh-tasks .tk-archive-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.dsh-tasks .tk-archive-row:last-child {
+  border-bottom: 0;
+}
+
+.dsh-tasks .tk-archive-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-tasks .tk-archive-row-main:hover .tk-archive-title {
+  text-decoration: underline;
+}
+
+.dsh-tasks .tk-archive-title {
+  font-size: 13px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsh-tasks .tk-archive-meta {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-tasks .tk-archive-detail {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.dsh-tasks .tk-archive-body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-tasks .tk-archive-empty {
+  margin: 14px 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  text-align: center;
+}
+
+.dsh-tasks .tk-archived-count {
+  margin-left: 6px;
 }
