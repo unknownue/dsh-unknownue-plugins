@@ -14,13 +14,18 @@ import TranslationPanel, { type InitialTranslation } from './translation-panel';
 import { forgetTranslationViewState, readTranslationViewState, rememberTranslationViewState } from './view-state';
 import type { TranslationViewState } from './view-state';
 import type { PaperDetail, ViewMode } from './types';
+import { forgetSidebarPaper } from './sidebar-link';
+import type { PaperspaceSurface } from './view';
 
 /**
- * Last scroll offset per paper. Tab switches unmount the reader (DSH renders
- * only the active conversation.view), so the offset is kept at module level
- * and restored when the same paper is reopened.
+ * Last scroll offset per paper PER SURFACE. Tab switches unmount the reader
+ * (DSH renders only the active conversation.view), so the offset is kept at
+ * module level and restored when the same paper is reopened. The right Sidebar
+ * reads the same paper in the same page but a different port, so the surface is
+ * part of the key: each column keeps the place its reader left.
  */
 const scrollOffsets = new Map<string, number>();
+const scrollKey = (surface: PaperspaceSurface, arxivId: string) => surface + ':' + arxivId;
 
 function buildToc(markdown: string) {
   const slugger = new GithubSlugger();
@@ -50,17 +55,24 @@ function scrollContainers(main: HTMLElement | null): HTMLElement[] {
 
 export default function Reader({
   arxivId,
+  surface = 'view',
   theme,
   onThemeChange,
   onBack,
   onDiscuss,
+  onOpenInSidebar,
 }: {
   arxivId: string;
+  /** Hosting surface: the 论文 tab, or the right Sidebar pane. */
+  surface?: PaperspaceSurface;
   theme: PaperspaceTheme;
   onThemeChange: (next: PaperspaceTheme) => void;
   onBack: () => void;
   onDiscuss: () => void;
+  /** Show this paper in DSH's right Sidebar; absent inside the Sidebar itself. */
+  onOpenInSidebar?: () => void;
 }) {
+  const offsetKey = scrollKey(surface, arxivId);
   const [paper, setPaper] = useState<PaperDetail | null>(null);
   const [error, setError] = useState('');
   const [initialTranslation, setInitialTranslation] = useState<InitialTranslation>(null);
@@ -249,8 +261,10 @@ export default function Reader({
         setError('删除失败 (HTTP ' + response.status + ')');
         return;
       }
-      scrollOffsets.delete(arxivId);
+      scrollOffsets.delete(offsetKey);
       forgetTranslationViewState(arxivId);
+      // No later params-less open may resume into a paper that is gone.
+      forgetSidebarPaper(arxivId);
       onBack();
     } catch (cause) {
       setError('删除失败：' + (cause instanceof Error ? cause.message : String(cause)));
@@ -282,7 +296,7 @@ export default function Reader({
       if (!(target instanceof HTMLElement)) return;
       // Only the reader itself or an ancestor scrollport counts.
       if (target !== main && !target.contains(main)) return;
-      if (target.scrollTop > 0) scrollOffsets.set(arxivId, target.scrollTop);
+      if (target.scrollTop > 0) scrollOffsets.set(offsetKey, target.scrollTop);
     };
     window.addEventListener('scroll', onScroll, { capture: true, passive: true });
     window.addEventListener('wheel', markUser, { passive: true });
@@ -295,12 +309,12 @@ export default function Reader({
       window.removeEventListener('keydown', markUser, true);
       for (const el of scrollContainers(main)) {
         if (el.scrollTop > 0) {
-          scrollOffsets.set(arxivId, el.scrollTop);
+          scrollOffsets.set(offsetKey, el.scrollTop);
           break;
         }
       }
     };
-  }, [paper, arxivId]);
+  }, [paper, offsetKey]);
 
   // ── Scroll restore ─────────────────────────────────────────────────────────
   // The saved offset only matches a specific layout: the one recorded when the
@@ -317,7 +331,7 @@ export default function Reader({
   useEffect(() => {
     const main = mainRef.current;
     if (!main) return;
-    const saved = scrollOffsets.get(arxivId);
+    const saved = scrollOffsets.get(offsetKey);
     // `applied` is local to this effect run: the immediate apply plus its
     // rAF/timeout retries may re-assert the position while the layout still
     // settles (KaTeX, images). `restoreAppliedRef` spans runs so a later
@@ -346,7 +360,7 @@ export default function Reader({
       cancelAnimationFrame(rafB);
       window.clearTimeout(retry);
     };
-  }, [paper, arxivId, viewReady]);
+  }, [paper, offsetKey, viewReady]);
 
   const load = useCallback(async () => {
     try {
@@ -499,9 +513,22 @@ export default function Reader({
                   </button>
                 </div>
                 <ThemeSwitch value={theme} onChange={onThemeChange} />
-                {paper.status === 'ready' && (
+                {/* 与 AI 讨论 opens the PAPER's own session (create + open), which
+                    would switch the Sidebar's session-bound surface out from
+                    under this reader — so the action stays with the tab, where
+                    the session switch is what the user asked for. */}
+                {paper.status === 'ready' && surface === 'view' && (
                   <button className="button compact primary" onClick={onDiscuss}>
                     与 AI 讨论
+                  </button>
+                )}
+                {paper.status === 'ready' && onOpenInSidebar && (
+                  <button
+                    className="button compact ghost"
+                    onClick={onOpenInSidebar}
+                    title="在右侧栏打开，与对话同屏阅读"
+                  >
+                    在侧栏打开
                   </button>
                 )}
                 <a className="button compact ghost" href={'https://arxiv.org/abs/' + paper.arxivId} target="_blank" rel="noreferrer">

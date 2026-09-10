@@ -142,6 +142,28 @@ running INSIDE this DSH profile process:
   restored offset lands on the same layout it was recorded on. Paperspace's
   stylesheet is scoped under `.dsh-paperspace` at build time; KaTeX fonts are
   served by the host route `/dsh-unknownue-plugins/paperspace/static/fonts`.
+- **Right-Sidebar surface (会话 + 论文同屏)** — the SAME view also runs as a
+  right-Sidebar page tab (kind `paperspace`), so a paper can sit next to the
+  conversation instead of replacing it. Entries: the 论文 tab's list rows
+  (侧栏打开), the reader header (在侧栏打开), and the Sidebar's own "+" control,
+  whose guide page now offers 论文 beside 文件. The tab is a PAGE type, so its
+  route — library list ⇄ one paper's reader — rides the tab's navigation
+  params: opening another paper reveals the one tab and re-points it instead of
+  stacking tabs. One view serves both surfaces
+  (`data-ps-surface="view" | "sidebar"`): the tab still hides DSH's composer,
+  the pane scrolls inside itself with compact paddings and drops the
+  viewport-anchored hover TOC, and 与 AI 讨论 stays tab-only — it opens the
+  paper's own session, which would switch the Sidebar's session out from under
+  the reader. A params-less open — the guide page's entry box, the strip's add
+  control, a layout restored by undo — RESUMES the paper this tab last showed
+  (kept in module state + a sessionStorage mirror, because picking a guide entry
+  replaces the tab that was there and its navigation record goes with it): the
+  guide's 论文 box comes back to the reading position, and only the reader's own
+  back link returns to the library. Registration rides
+  `ctx.inject(['slots', 'sidebarRightTabs'])`, so a DSH build without the right
+  Sidebar is unaffected. Note DSH's default-page rule (a pane seeds the sole
+  guide entry, otherwise the guide): with 论文 added, a first-opened pane shows
+  the guide (文件 / 论文) instead of the file tree directly.
 - **Native DSH conversations** — paperspace has NO chat UI of its own: the
   **与 AI 讨论** button (library cards + reader header) links a DSH session
   to the paper through the shared **Paperspace** workspace (one entry in the
@@ -440,6 +462,22 @@ The tasks host half ships its own integration suite (`src/host/tasks/tasks.test.
 built to `lib/tasks/tasks.test.js`) that boots the real PGlite runtime against
 a temp `DSH_HOME` and covers the routes, validation, fractional ranking,
 settings persistence and the dispose → reopen persistence path.
+
+The client half has no test framework (React and the module loader are the
+host's at runtime), but the paperspace right-Sidebar wiring has a headless
+harness — `scratch-sidebar-verify.mjs` — that materializes the BUILT bundle the
+way DSH does, runs `apply(ctx)` against a recording stub context, checks the
+navigation contract in both directions (params → route, navigate → params), and
+drives the controller facade behind 在侧栏打开:
+
+```sh
+npm run build && node scratch-sidebar-verify.mjs
+```
+
+It borrows react/react-dom from an installed profile (`DSH_PROFILE` overrides
+the default `~/.dsh/profiles/web/package.json`). Re-run it after a DSH upgrade:
+it is the cheapest way to learn that the right Sidebar's service names, slot
+keys, or tab-type contract moved.
 
 ## License
 

@@ -291,6 +291,48 @@ button.paper-item-title:hover { text-decoration:underline; }
 .paper-field input { padding:8px 10px; border:1px solid var(--ps-line-strong, #d4d4d8); border-radius:8px; background:var(--ps-bg, #fff); color:var(--ps-text, #18181b); }
 .paper-field-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 
+/* ===== Hosting-surface wrapper =====
+   The view renders inside one `.dsh-ps-surface` element that carries the
+   hosting surface as `data-ps-surface` — the ROOT itself can never be matched
+   by this sheet (the build prefixes every selector with `.dsh-paperspace`, a
+   descendant combinator), and the attribute is also what keeps the tab's
+   composer-hiding rule from firing for the Sidebar pane.
+
+   In the TAB the wrapper repeats the height the view's previous direct child
+   had, so the `height:100%` chain (`reader-shell` → DSH's scrollport) resolves
+   exactly as it did before the wrapper existed; where that chain was already
+   content-sized (DSH scrolls the tab's outer scrollport), the wrapper is inert. */
+[data-ps-surface='view'] { height:100%; min-height:0; }
+
+/* ===== Right Sidebar surface =====
+   The same view hosted by DSH's right Sidebar pane. The pane's own body is the
+   scrollport (dockkit `paneBody`: flex:1 1 auto, min-height:0, overflow:auto),
+   so this surface adds no scroller of its own — it only adapts the view to the
+   column's 300–45%-of-frame width: the viewport-anchored hover TOC (which would
+   float over the chat column) is dropped, and the paddings shrink. */
+[data-ps-surface='sidebar'] .paper-workbench { max-width:none; padding:16px 14px 48px; }
+[data-ps-surface='sidebar'] .workbench-header { display:block; margin-bottom:14px; }
+[data-ps-surface='sidebar'] .workbench-header h1 { font-size:18px; }
+[data-ps-surface='sidebar'] .workbench-header p { font-size:12px; }
+[data-ps-surface='sidebar'] .library-controls { flex-wrap:wrap; gap:8px; }
+[data-ps-surface='sidebar'] .category-row { margin-bottom:14px; }
+[data-ps-surface='sidebar'] .paper-item { flex-direction:column; align-items:stretch; gap:6px; }
+[data-ps-surface='sidebar'] .paper-item-actions { gap:10px; }
+[data-ps-surface='sidebar'] .reader-toc,
+[data-ps-surface='sidebar'] .toc-trigger { display:none; }
+/* The floating section picker is viewport-fixed; its right offset already
+   tracks the pane's edge, but its top must clear the dock's tab strip. */
+[data-ps-surface='sidebar'] .section-jump { top:46px; }
+[data-ps-surface='sidebar'] .paper-header { padding:14px; }
+[data-ps-surface='sidebar'] .paper-header h1 { font-size:17px; }
+[data-ps-surface='sidebar'] .paper-header-bottom { display:block; }
+[data-ps-surface='sidebar'] .paper-header-bottom>div:last-child { margin-top:10px; }
+[data-ps-surface='sidebar'] .paper-article { padding:20px 14px 96px; }
+[data-ps-surface='sidebar'] .paper-status-note { padding:0 14px; }
+[data-ps-surface='sidebar'] .translation-bar { padding:8px 14px; }
+[data-ps-surface='sidebar'] .translation-progress { flex-basis:100%; }
+[data-ps-surface='sidebar'] .dialog { width:calc(100% - 24px); }
+
 /* ===== Responsive ===== */
 @media (max-width:1100px) {
   .reader-toc,.toc-trigger { display:none; }

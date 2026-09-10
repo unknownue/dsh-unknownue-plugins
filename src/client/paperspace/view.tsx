@@ -1,6 +1,13 @@
 /**
- * Paperspace tab root: setup screen (first-run, mandatory configuration) →
+ * Paperspace root: setup screen (first-run, mandatory configuration) →
  * library list ⇄ paper reader.
+ *
+ * TWO SURFACES render this one view:
+ *   - `view` — the 论文 tab in the conversation body, which owns its route
+ *     (module state + a sessionStorage mirror, see below);
+ *   - `sidebar` — DSH's right Sidebar pane, which is CONTROLLED: the tab's
+ *     navigation params are the route and `navigate` writes them back, so the
+ *     list ⇄ reader trip never touches this module's tab-level memory.
  */
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import PapersList from './papers-list';
@@ -8,24 +15,31 @@ import Reader from './reader';
 import { sessionsUrl } from './api';
 import { fetchSettings, saveSettings, type SettingsView } from './settings-page';
 import { readPaperspaceTheme, rememberPaperspaceTheme, type PaperspaceTheme } from './theme';
+import { openPaperInSidebar, useSidebarRightAvailable } from './sidebar-link';
 
-type Route = { kind: 'list' } | { kind: 'reader'; arxivId: string };
+/** Which surface hosts the view: the 论文 tab, or the right Sidebar pane. */
+export type PaperspaceSurface = 'view' | 'sidebar';
+
+/** What the view shows: the library, or one paper's reader. */
+export type PaperspaceRoute = { kind: 'list' } | { kind: 'reader'; arxivId: string };
 
 /**
- * Tab switching unmounts PaperspaceView (DSH renders only the active
- * conversation.view), so the route lives OUTSIDE the component: module state
- * survives tab switches, and a sessionStorage mirror survives page reloads.
+ * Tab switching unmounts the 论文 tab (DSH renders only the active
+ * conversation.view), so the TAB's route lives OUTSIDE the component: module
+ * state survives tab switches, and a sessionStorage mirror survives page
+ * reloads. The Sidebar surface has no such problem — its route is the tab's
+ * navigation record — and therefore never reads or writes this memory.
  */
 const ROUTE_STORAGE_KEY = 'dsh-unknownue-plugins/paperspace:route';
-let memoryRoute: Route | null = null;
+let memoryRoute: PaperspaceRoute | null = null;
 
-function isRoute(value: unknown): value is Route {
+function isRoute(value: unknown): value is PaperspaceRoute {
   if (value === null || typeof value !== 'object') return false;
   const route = value as { kind?: unknown; arxivId?: unknown };
   return route.kind === 'list' || (route.kind === 'reader' && typeof route.arxivId === 'string');
 }
 
-function readInitialRoute(): Route {
+function readInitialRoute(): PaperspaceRoute {
   if (memoryRoute) return memoryRoute;
   try {
     const raw = sessionStorage.getItem(ROUTE_STORAGE_KEY);
@@ -39,7 +53,7 @@ function readInitialRoute(): Route {
   return { kind: 'list' };
 }
 
-function rememberRoute(route: Route): void {
+function rememberRoute(route: PaperspaceRoute): void {
   memoryRoute = route;
   try {
     sessionStorage.setItem(ROUTE_STORAGE_KEY, JSON.stringify(route));
@@ -145,13 +159,42 @@ function composerSeatGradient(page: string): string {
   return `linear-gradient(180deg, transparent 0px, ${page} 36px)`;
 }
 
-export default function PaperspaceView({ sessions, workspaces }: { sessions?: PaperspaceSessionsFace; workspaces?: PaperspaceWorkspacesFace }) {
+export interface PaperspaceViewProps {
+  sessions?: PaperspaceSessionsFace;
+  workspaces?: PaperspaceWorkspacesFace;
+  /** Hosting surface; defaults to the 论文 tab. */
+  surface?: PaperspaceSurface;
+  /** Controlled route; the Sidebar tab passes the one its navigation params name. */
+  route?: PaperspaceRoute;
+  /** Controlled navigation; the Sidebar tab writes params back through it. */
+  navigate?: (next: PaperspaceRoute) => void;
+}
+
+export default function PaperspaceView({
+  sessions,
+  workspaces,
+  surface = 'view',
+  route: controlledRoute,
+  navigate: controlledNavigate,
+}: PaperspaceViewProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const [route, setRouteState] = useState<Route>(readInitialRoute);
-  const navigate = useCallback((next: Route) => {
-    rememberRoute(next);
-    setRouteState(next);
-  }, []);
+  const [localRoute, setLocalRoute] = useState<PaperspaceRoute>(readInitialRoute);
+  const route = controlledRoute ?? localRoute;
+  const navigate = useCallback(
+    (next: PaperspaceRoute) => {
+      if (controlledNavigate !== undefined) {
+        controlledNavigate(next);
+        return;
+      }
+      rememberRoute(next);
+      setLocalRoute(next);
+    },
+    [controlledNavigate],
+  );
+  // 在侧栏打开 belongs to the TAB (the Sidebar is where it opens); it is also
+  // absent — and so keeps the button off screen — on a DSH without the column.
+  const sidebarRight = useSidebarRightAvailable();
+  const openInSidebar = surface === 'view' && sidebarRight ? openPaperInSidebar : undefined;
   // Paperspace-local theme, independent from DSH's light/dark setting.
   const [psTheme, setPsTheme] = useState<PaperspaceTheme>(readPaperspaceTheme);
   const changeTheme = useCallback((next: PaperspaceTheme) => {
@@ -165,8 +208,12 @@ export default function PaperspaceView({ sessions, workspaces }: { sessions?: Pa
   // and scrollport behind the tab so the page background no longer reuses
   // DSH's theme. In auto mode DSH's own background stays untouched. Every
   // inline style is restored when the tab unmounts or the mode changes.
+  //
+  // The Sidebar surface never paints anything: its ancestors are DSH's own
+  // panel chrome, which the reading surface must not repaint (the pane keeps
+  // its own background, and the view paints its paper surface itself).
   useLayoutEffect(() => {
-    if (psTheme === 'auto') return;
+    if (psTheme === 'auto' || surface === 'sidebar') return;
     const root = rootRef.current;
     if (!root) return;
     const page = psTheme === 'dark' ? PAGE_DARK : PAGE_LIGHT;
@@ -275,46 +322,57 @@ export default function PaperspaceView({ sessions, workspaces }: { sessions?: Pa
 
   return (
     <div className="dsh-paperspace" ref={rootRef} data-ps-theme={psTheme === 'auto' ? undefined : psTheme}>
-      {settings === null ? (
-        <main className="paper-workbench">
-          {settingsFailed ? (
-            <section className="empty-state">
-              <h2>Could not reach the paperspace host</h2>
-              <p>The plugin's host half is not running. Check the bundle install and restart dsh web.</p>
-              <button className="button primary" onClick={() => void reload()}>
-                Retry
-              </button>
-            </section>
-          ) : (
-            <p className="ingesting">
-              <span className="spinner" /> Loading paperspace…
-            </p>
-          )}
-        </main>
-      ) : !settings.configured ? (
-        <SetupScreen defaults={settings.defaults} onConfigured={() => void reload()} />
-      ) : (
-        <>
-          {route.kind === 'list' && (
-            <PapersList
-              theme={psTheme}
-              onThemeChange={changeTheme}
-              onOpen={arxivId => navigate({ kind: 'reader', arxivId })}
-              onDiscuss={arxivId => void discuss(arxivId)}
-            />
-          )}
-          {route.kind === 'reader' && (
-            <Reader
-              key={route.arxivId}
-              arxivId={route.arxivId}
-              theme={psTheme}
-              onThemeChange={changeTheme}
-              onBack={() => navigate({ kind: 'list' })}
-              onDiscuss={() => void discuss(route.arxivId)}
-            />
-          )}
-        </>
-      )}
+      {/* The surface wrapper carries the hosting surface as an attribute: every
+          stylesheet rule is scoped under `.dsh-paperspace` at build time, so the
+          root itself can never be matched by a descendant selector — and the
+          attribute is also what keeps the tab's composer-hiding rule from firing
+          when paperspace is only the Sidebar's pane. */}
+      <div className="dsh-ps-surface" data-ps-surface={surface}>
+        {settings === null ? (
+          <main className="paper-workbench">
+            {settingsFailed ? (
+              <section className="empty-state">
+                <h2>Could not reach the paperspace host</h2>
+                <p>The plugin's host half is not running. Check the bundle install and restart dsh web.</p>
+                <button className="button primary" onClick={() => void reload()}>
+                  Retry
+                </button>
+              </section>
+            ) : (
+              <p className="ingesting">
+                <span className="spinner" /> Loading paperspace…
+              </p>
+            )}
+          </main>
+        ) : !settings.configured ? (
+          <SetupScreen defaults={settings.defaults} onConfigured={() => void reload()} />
+        ) : (
+          <>
+            {route.kind === 'list' && (
+              <PapersList
+                surface={surface}
+                theme={psTheme}
+                onThemeChange={changeTheme}
+                onOpen={arxivId => navigate({ kind: 'reader', arxivId })}
+                onDiscuss={arxivId => void discuss(arxivId)}
+                onOpenInSidebar={openInSidebar}
+              />
+            )}
+            {route.kind === 'reader' && (
+              <Reader
+                key={route.arxivId}
+                arxivId={route.arxivId}
+                surface={surface}
+                theme={psTheme}
+                onThemeChange={changeTheme}
+                onBack={() => navigate({ kind: 'list' })}
+                onDiscuss={() => void discuss(route.arxivId)}
+                onOpenInSidebar={openInSidebar === undefined ? undefined : () => openInSidebar(route.arxivId)}
+              />
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

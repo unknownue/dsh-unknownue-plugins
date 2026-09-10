@@ -8,6 +8,7 @@ import PaperspaceView from './view';
 import UnknownueSettingsPage from './settings-page';
 import { PaperBadge } from './paper-badge';
 import { PaperLinkControl } from './paper-link-control';
+import { applyPaperspaceSidebar } from './sidebar-tab';
 import stylesCss from './styles.css';
 import katexCss from 'katex/dist/katex.min.css';
 
@@ -111,12 +112,23 @@ body[data-ds-dark-theme] .dsh-paperspace:not([data-ps-theme='light']),
 }
 
 /* The composer (input box) belongs to the chat view — hide it while the
-   paperspace tab owns the conversation view. DSH renders the composer for
+   paperspace TAB owns the conversation view. DSH renders the composer for
    the active view regardless of which tab it is, so the seat is hidden via
-   CSS when the paperspace root is present in the active conversation. */
-[data-phase='active']:has(.dsh-paperspace) [data-composer-seat],
-[class*='scrollBody']:has(.dsh-paperspace) [class*='composerSeat'] {
+   CSS when the paperspace root is present in the active conversation.
+
+   The data-ps-surface="view" guard matters: the SAME view also renders in
+   DSH's right Sidebar pane (data-ps-surface="sidebar"), and without the guard
+   a paper shown NEXT TO the chat would hide the chat's own input box. */
+[data-phase='active']:has(.dsh-paperspace [data-ps-surface='view']) [data-composer-seat],
+[class*='scrollBody']:has(.dsh-paperspace [data-ps-surface='view']) [class*='composerSeat'] {
   display: none !important;
+}
+
+/* Sidebar chip title (registered through sidebar.right.pane.tab.title). */
+.dsh-ps-sidebar-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 `;
 
@@ -141,8 +153,20 @@ export function applyPaperspaceTab(ctx: any): void {
   ctx.effect(
     () =>
       ctx.locale.register(NS, {
-        zh: { 'view.label': '论文', 'settings.label': 'UnPlugin' },
-        en: { 'view.label': 'Papers', 'settings.label': 'UnPlugin' },
+        zh: {
+          'view.label': '论文',
+          'settings.label': 'UnPlugin',
+          'sidebar.title': '论文',
+          'sidebar.guide.title': '论文',
+          'sidebar.guide.description': '在侧栏阅读 arXiv 论文（论文库 + 阅读器）',
+        },
+        en: {
+          'view.label': 'Papers',
+          'settings.label': 'UnPlugin',
+          'sidebar.title': 'Papers',
+          'sidebar.guide.title': 'Papers',
+          'sidebar.guide.description': 'Read arXiv papers in the sidebar (library + reader)',
+        },
       }),
     'dsh-paperspace: dictionaries',
   );
@@ -208,4 +232,7 @@ export function applyPaperspaceTab(ctx: any): void {
       () => React.createElement(UnknownueSettingsPage),
     ),
   );
+  // Right Sidebar surface: the same view, in its own 论文 page tab, so a paper
+  // can be read next to the conversation. Inert on a DSH without the column.
+  applyPaperspaceSidebar(ctx);
 }

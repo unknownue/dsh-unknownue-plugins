@@ -1,7 +1,7 @@
 {
   "name": "dsh-unknownue-plugins",
-  "version": "0.4.0",
-  "description": "Personal DSH plugin bundle (unknownue): Makefile panel, content-width, open-workspace, SSH remote workspaces, authenticated gateway, file explorer, a personal task board (PGlite), and an in-process paperspace academic-paper reader (PGlite, no Docker).",
+  "version": "0.5.0",
+  "description": "Personal DSH plugin bundle (unknownue): Makefile panel, content-width, open-workspace, SSH remote workspaces, authenticated gateway, file explorer, a personal task board (PGlite), and an in-process paperspace academic-paper reader (PGlite, no Docker) that also runs in the right Sidebar next to the conversation.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

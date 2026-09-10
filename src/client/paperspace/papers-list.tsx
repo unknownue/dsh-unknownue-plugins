@@ -5,22 +5,30 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { PAPERS_API } from './api';
 import ThemeSwitch from './theme-switch';
+import { forgetSidebarPaper } from './sidebar-link';
 import type { PaperspaceTheme } from './theme';
+import type { PaperspaceSurface } from './view';
 import type { Paper } from './types';
 
 const ARXIV_ID_RE = /^\d{4}\.\d{5}(v\d+)?$/;
 const DEFAULT_CATEGORIES = ['cs.AI', 'cs.CL', 'cs.CV', 'cs.LG', 'cs.RO', 'cs.DC', 'cs.LO'];
 
 export default function PapersList({
+  surface = 'view',
   theme,
   onThemeChange,
   onOpen,
   onDiscuss,
+  onOpenInSidebar,
 }: {
+  /** Hosting surface; 与 AI 讨论 is tab-only (see the reader's header). */
+  surface?: PaperspaceSurface;
   theme: PaperspaceTheme;
   onThemeChange: (next: PaperspaceTheme) => void;
   onOpen: (arxivId: string) => void;
   onDiscuss: (arxivId: string) => void;
+  /** Show this paper in DSH's right Sidebar; absent when the column does not exist. */
+  onOpenInSidebar?: (arxivId: string) => void;
 }) {
   const [papers, setPapers] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,6 +124,8 @@ export default function PapersList({
     try {
       const response = await fetch(`${PAPERS_API}/papers/` + encodeURIComponent(paper.arxivId), { method: 'DELETE' });
       if (!response.ok) throw new Error('API returned ' + response.status);
+      // No later params-less open may resume into a paper that is gone.
+      forgetSidebarPaper(paper.arxivId);
       await refresh();
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Failed to delete paper');
@@ -190,9 +200,21 @@ export default function PapersList({
                       <button type="button" className="text-button" onClick={() => onOpen(paper.arxivId)}>
                         阅读
                       </button>
-                      <button type="button" className="text-button muted" onClick={() => onDiscuss(paper.arxivId)}>
-                        与 AI 讨论
-                      </button>
+                      {onOpenInSidebar && (
+                        <button
+                          type="button"
+                          className="text-button muted"
+                          title="在右侧栏打开，与对话同屏阅读"
+                          onClick={() => onOpenInSidebar(paper.arxivId)}
+                        >
+                          侧栏打开
+                        </button>
+                      )}
+                      {surface === 'view' && (
+                        <button type="button" className="text-button muted" onClick={() => onDiscuss(paper.arxivId)}>
+                          与 AI 讨论
+                        </button>
+                      )}
                       <button type="button" className="text-button muted" onClick={() => void remove(paper)}>
                         删除
                       </button>
