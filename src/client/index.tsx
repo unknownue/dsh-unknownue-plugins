@@ -1,13 +1,13 @@
 /**
  * dsh-unknownue-plugins client entry point.
  *
- * Registers all toolbar buttons (Makefile, Open Dir, Terminal, Width)
- * and the file explorer editor view.
+ * Registers the toolbar buttons (Makefile, Terminal, Width) and the file
+ * explorer editor view. Opening the workspace in the OS file manager is left to
+ * DSH's own open-in-app plugin (`@deepseek-ai/dsh-client-ui-open-in-app`).
  */
 
 import React from "react";
 import { MakefileControl } from "./toolbar/MakefileControl";
-import { OpenDirButton } from "./toolbar/OpenDirButton";
 import { OpenTerminalButton } from "./toolbar/OpenTerminalButton";
 import { WidthControl, readWidthPct, applyWidth, setWidthPct } from "./toolbar/WidthControl";
 import { applyExplorerEditor } from "./explorer-editor";
@@ -106,18 +106,6 @@ function apply(ctx: any): void {
         ),
       ),
     "dsh-unknownue-plugins: makefile header action",
-  );
-
-  const openDirInjected = () => ({ sessions: ctx.sessions });
-  ctx.effect(
-    () =>
-      ctx.slots.inject("conversation.session.header.actions", () =>
-        ctx.slots.register(
-          { name: "conversation.session.header.actions", id: "dsh-unknownue-plugins/open-dir", inject: openDirInjected },
-          OpenDirButton,
-        ),
-      ),
-    "dsh-unknownue-plugins: open workspace directory action",
   );
 
   const terminalInjected = () => ({ sessions: ctx.sessions });

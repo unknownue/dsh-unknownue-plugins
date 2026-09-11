@@ -1,8 +1,11 @@
 /**
- * Headless smoke test for the paperspace right-Sidebar wiring (scratch harness,
- * same spirit as scratch-e2echeck.mjs: no test framework, run it by hand).
+ * Headless smoke test for the paperspace right-Sidebar wiring (a script-style
+ * harness: no test framework, run it by hand from the repository root).
  *
- *   npm run build && node scratch-sidebar-verify.mjs        (from this directory)
+ *   npm run build && node scripts/verify-sidebar.mjs
+ *
+ * The working directory must be the repository root — the harness resolves the
+ * built bundle and the package manifest relative to `process.cwd()`.
  *
  * React is not a dependency of this package — the DSH host provides it at
  * runtime — so the harness borrows react/react-dom/server from an installed

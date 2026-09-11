@@ -1,7 +1,12 @@
-# Reproducible builds: styles.css text is embedded verbatim by the esbuild
-# text loader, so the checkout MUST always carry LF endings — regardless of
-# the developer's core.autocrlf setting.
-src/client/*.css text eol=lf
+# Reproducible builds: every stylesheet is embedded verbatim by the esbuild text
+# loader, so the checkout MUST always carry LF endings — regardless of the
+# developer's core.autocrlf setting. The `**` matters: `src/client/*.css` would
+# cover only the top-level stylesheet and leave the per-feature ones
+# (paperspace/, tasks/) to be checked out as CRLF on Windows, which would bake
+# CRLF into lib/client.js and break cross-platform reproducibility.
+src/client/**/*.css text eol=lf
 
-# Built artifacts: keep checkout/commit diffs byte-stable on Windows.
-lib/*.js text eol=lf
+# Built artifacts: keep checkout/commit diffs byte-stable on Windows. They are
+# committed on purpose (see docs/development.md), and `npm run check:lib`
+# compares a fresh build against them — a CRLF checkout would fail that check.
+lib/**/*.js text eol=lf

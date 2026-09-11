@@ -1,7 +1,7 @@
 {
   "name": "dsh-unknownue-plugins",
   "version": "0.5.0",
-  "description": "Personal DSH plugin bundle (unknownue): Makefile panel, content-width, open-workspace, SSH remote workspaces, authenticated gateway, file explorer, a personal task board (PGlite), and an in-process paperspace academic-paper reader (PGlite, no Docker) that also runs in the right Sidebar next to the conversation.",
+  "description": "Personal DSH plugin bundle (unknownue): Makefile panel, content-width, open-terminal, SSH remote workspaces, authenticated gateway, file explorer, a personal task board (PGlite), and an in-process paperspace academic-paper reader (PGlite, no Docker) that also runs in the right Sidebar next to the conversation.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -16,13 +16,16 @@
     "build:host": "node esbuild.config.mjs host",
     "build": "node esbuild.config.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.host.json",
-    "test": "node lib/explorer.test.js && node lib/paperspace/paperspace.test.js && node lib/tasks/tasks.test.js"
+    "test": "node lib/explorer.test.js && node lib/paperspace/paperspace.test.js && node lib/tasks/tasks.test.js",
+    "check:lib": "node esbuild.config.mjs && git diff --exit-code -- lib",
+    "verify:sidebar": "node scripts/verify-sidebar.mjs"
   },
   "files": [
     "lib",
     "src/client",
     "src/host",
     "cordis.patch.yml",
+    "docs",
     "README.md",
     "THIRD-PARTY-NOTICES.md"
   ],

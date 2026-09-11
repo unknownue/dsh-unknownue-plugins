@@ -1,9 +1,10 @@
 # Third-party notices
 
-`dsh-unknownue-plugins` is MIT-licensed. The paperspace feature (embedded
-paper reader) bundles and depends on third-party code whose licenses require
-attribution. Sources are resolved from npm at install time; this file lists
-the notable ones.
+`dsh-unknownue-plugins` is MIT-licensed. Two features bundle or port
+third-party code whose licenses require attribution: the paperspace reader
+(embedded paper reader, third-party npm packages) and the file explorer (a
+ported UI). Sources are resolved from npm at install time; this file lists the
+notable ones.
 
 | Package | Version (range) | License | Notes |
 |---|---|---|---|
@@ -20,5 +21,11 @@ the notable ones.
 The upstream paperspace sources ported into this bundle were original work of
 the paperspace project; the reader UI's paperspace stylesheet and React
 components are ported with structural changes only (routing/fetch/scope).
+
+## File explorer (ported UI)
+
+| Source | License | Notes |
+|---|---|---|
+| [oneirictouch/dsh-explorer-editor](https://github.com/oneirictouch/dsh-explorer-editor) | MIT | The VS Code-style explorer/editor UI under `src/client/explorer/` and `src/client/editor/` (file tree, editor tabs, markdown preview, theme panel) is ported from this project, with routing/fetch rewired onto this bundle's loopback host routes. The host half (`src/host/explorer.ts`), the HTTP adapter and the remote-workspace routing are original to this bundle. Monaco is loaded at runtime from a public CDN (see `src/client/editor/monaco.ts`), not vendored. |
 
 Full license texts ship inside each installed package's `LICENSE` file.

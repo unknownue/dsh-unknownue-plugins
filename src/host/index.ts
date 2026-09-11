@@ -8,30 +8,28 @@
  *
  * Features:
  *   #1 Makefile target discovery (display-only, loopback JSON-RPC route).
- *   #2 Open the current session's working directory in the OS file manager.
- *   #3 Open a terminal window at the current session's working directory.
- *   #4 Remote-aware file explorer (ctx.fs / ctx.subprocess seams, local + remote).
+ *   #2 Open a terminal window at the current session's working directory.
+ *   #3 Remote-aware file explorer (ctx.fs / ctx.subprocess seams, local + remote).
+ *
+ * Opening the session workspace directory in the OS file manager is deliberately
+ * NOT implemented here: DSH ships that already (the official open-in-app plugin,
+ * `@deepseek-ai/dsh-host-open-in-app` + `@deepseek-ai/dsh-client-ui-open-in-app`,
+ * routes `/open-in-app/*`), so this bundle no longer duplicates it.
  *
  * Remote workspaces are handled by dsh-workspace-enhancement (dependency).
  * Remote DSH access is handled by dsh-gateway (dependency).
  */
 import { isLoopback, isLoopbackHost, json, makefileDispatch, messageOf, readBody } from "./makefile.js";
 import { explorerDispatch, registerExplorerWatch, disposeExplorerWatch } from "./explorer.js";
-import { openDirectory, openTerminal } from "./platform.js";
+import { openTerminal } from "./platform.js";
 import type { BundleConfig, HostContext, ExplorerParams } from "./types.js";
 
 const name = "dsh-unknownue-plugins";
 const inject = ["webServer"];
 
 const MAKE_ROUTE = "/dsh-unknownue-plugins/makefile/api";
-const OPEN_ROUTE = "/dsh-unknownue-plugins/open/api";
 const TERMINAL_ROUTE = "/dsh-unknownue-plugins/terminal/api";
 const EXPLORER_ROUTE = "/dsh-unknownue-plugins/explorer/api";
-
-async function openDispatch(method: string, params: Record<string, unknown>) {
-  if (method !== "openDir") throw new Error(`unknown method "${method}"`);
-  return openDirectory({ path: params.path as string });
-}
 
 async function terminalDispatch(method: string, params: Record<string, unknown>) {
   if (method !== "openTerminal") throw new Error(`unknown method "${method}"`);
@@ -76,7 +74,6 @@ function apply(ctx: HostContext, config: BundleConfig = {}): void {
   };
 
   registerRoute(MAKE_ROUTE, (method, params) => makefileDispatch(resolved, method, params));
-  registerRoute(OPEN_ROUTE, openDispatch);
   registerRoute(TERMINAL_ROUTE, terminalDispatch);
   registerRoute(EXPLORER_ROUTE, (method, params) => explorerDispatch(ctx, resolved, method, params as ExplorerParams));
 
