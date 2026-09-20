@@ -2,7 +2,7 @@
 
 Personal [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) plugin bundle
 for **unknownue**: one npm package whose bundle patch mounts a set of personal
-plugins in a single install — workspace toolbar actions, a remote-aware file
+plugins in a single install — a content-width control, a remote-aware file
 explorer, a personal task board, and an in-process academic-paper reader.
 
 Everything the browser half needs goes through loopback-fenced HTTP routes on
@@ -13,7 +13,6 @@ instead of failing.
 
 | Feature | Where it appears | Docs |
 | --- | --- | --- |
-| **Makefile panel** — lists the session workspace's make targets (`##` help, `.PHONY` names, default badge) and copies `make <target>`; display-only, never runs `make` | session header button | [Toolbar actions](docs/features/toolbar-actions.md) |
 | **Content width** — 50–150 % slider in 5 % steps for the chat/content column, remembered per browser | sidebar footer button | [Toolbar actions](docs/features/toolbar-actions.md) |
 | **File explorer** — a `Files` tab that is a split pane (file tree + editor) with editor tabs (Ctrl/Cmd+S), markdown preview, context-menu file operations, themes and live refresh; local **and** remote (SSH) workspaces | conversation view tab | [File explorer](docs/features/file-explorer.md) |
 | **Paperspace** — arXiv library, reader (math, TOC, figure lightbox) and AI translation, running inside the DSH process: embedded PGlite, local object store, no Docker and no separate worker | `Papers` conversation tab, right-Sidebar page tab, session header badge, composer paper picker, UnPlugin settings | [Paperspace](docs/features/paperspace.md) |
@@ -81,7 +80,7 @@ Three layers, all documented in
 
 | Document | Covers |
 | --- | --- |
-| [Toolbar actions](docs/features/toolbar-actions.md) | Makefile panel, content width, and the OS actions DSH owns instead |
+| [Toolbar actions](docs/features/toolbar-actions.md) | the content-width control, and the header actions DSH owns instead |
 | [File explorer](docs/features/file-explorer.md) | the `Files` tab, editor, file operations, remote behaviour, limits |
 | [Paperspace](docs/features/paperspace.md) | the `Papers` tab and sidebar pane, reader, translation, architecture, operations |
 | [Tasks](docs/features/tasks.md) | the `Tasks` tab: board, list, archive, due dates, tags, subtasks, data layer |
@@ -105,17 +104,14 @@ docs/**            the documentation linked above
 npm install          # devDependencies only (esbuild, typescript, @types)
 npm run typecheck    # tsc over src/client and src/host
 npm run build        # esbuild → lib/client.js + lib/*.js
-npm test             # build first: 57 explorer + 98 paperspace + 77 tasks checks
+npm test             # build first: 56 explorer + 98 paperspace + 77 tasks checks
 npm run verify:sidebar   # build first: right-Sidebar wiring harness (no test framework)
 ```
 
 ## Known limitations
 
-- The toolbar actions and the Makefile panel work on the **DSH host machine's**
-  filesystem, so they cannot open or read a remote (SSH) session's paths.
-- The Makefile panel currently cannot list targets: the client sends method
-  `list` while the host dispatches `listTargets` — see the known-issue note in
-  [Toolbar actions](docs/features/toolbar-actions.md#makefile-panel-display-only).
+- The width control is browser-only: it rewrites a CSS variable in the page and remembers the
+  value in `localStorage`, so it is per browser profile.
 - In remote workspaces the explorer reads and writes over SFTP, but
   `mkdir` / `rename` / `delete` need a POSIX shell on the remote host.
 - Storage-path changes for paperspace and the task board are saved but take

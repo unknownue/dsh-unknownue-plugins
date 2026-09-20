@@ -27,7 +27,7 @@ import { promises as nodeFs } from "node:fs";
 import { extname, join } from "node:path";
 import { join as posixJoin } from "node:path/posix";
 import type { ServerResponse } from "node:http";
-import { messageOf } from "./makefile.js";
+import { messageOf } from "./http.js";
 import type {
   BundleConfig,
   ExplorerLimits,

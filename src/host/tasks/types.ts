@@ -4,7 +4,7 @@
  * The board is PERSONAL and user-maintained: there are no model-facing tools,
  * no session-log events, and no agent services. The only DSH seams consumed
  * are `ctx.webServer` (loopback REST routes) and `ctx.effect` (lifecycle),
- * exactly like the makefile/explorer features.
+ * exactly like the explorer/paperspace features.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 

@@ -1,15 +1,14 @@
 /**
  * dsh-unknownue-plugins client entry point.
  *
- * Registers the toolbar buttons (Makefile, Width) and the file explorer editor
- * view. Handing the session workspace directory to an OS program is left to DSH
+ * Registers the content-width control and the file explorer editor view.
+ * Handing the session workspace directory to an OS program is left to DSH
  * itself: `@deepseek-ai/dsh-client-ui-open-in-app` covers the file manager and
  * the terminal emulators ("Open In…"), and `dsh-client-ui-sidebar-terminal`
  * covers an in-GUI terminal, so this bundle ships neither.
  */
 
 import React from "react";
-import { MakefileControl } from "./toolbar/MakefileControl";
 import { WidthControl, readWidthPct, applyWidth, setWidthPct } from "./toolbar/WidthControl";
 import { applyExplorerEditor } from "./explorer-editor";
 import { applyPaperspaceTab } from "./paperspace/index";
@@ -23,29 +22,6 @@ import stylesCss from "./styles.css";
 function ensureStyles(): void {
   if (typeof document === "undefined") return;
   const css = [
-    ".dmk-action{flex:none;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:none;border-radius:50%;padding:0;background:transparent;cursor:pointer;color:var(--dsw-alias-label-secondary);}",
-    ".dmk-action:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}",
-    ".dmk-action svg{flex:none;}",
-    ".dmk-action:disabled{opacity:.45;cursor:default;}",
-    ".dmk-overlay{position:fixed;inset:0;z-index:1100;display:flex;align-items:center;justify-content:center;padding:24px;}",
-    ".dmk-mask{position:absolute;inset:0;background:var(--dsw-alias-bg-mask-1);backdrop-filter:var(--dsw-mask-blur);}",
-    ".dmk-card{position:relative;z-index:1;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;width:min(560px,100%);max-height:80vh;padding:16px 18px;border:1px solid var(--dsw-alias-border-inverted);border-radius:16px;background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-shadow-lv3);font-family:var(--dsw-font-family);color:var(--dsw-alias-label-primary);}",
-    ".dmk-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}",
-    ".dmk-title{margin:0;font-size:14px;font-weight:600;line-height:20px;}",
-    ".dmk-close{border:0;background:transparent;cursor:pointer;color:var(--dsw-alias-label-secondary);font-size:14px;line-height:1;padding:2px;}",
-    ".dmk-toolbar{display:flex;gap:8px;}",
-    ".dmk-workdir{flex:1;min-width:0;height:30px;box-sizing:border-box;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;color:var(--dsw-alias-label-primary);font-size:12px;}",
-    ".dmk-btn{flex:none;height:30px;padding:0 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;font-size:12px;}",
-    ".dmk-btn:hover{background:var(--dsw-alias-interactive-bg-hover);}",
-    ".dmk-btn:disabled{opacity:.45;cursor:default;}",
-    ".dmk-list{display:flex;flex-direction:column;gap:6px;overflow:auto;min-height:0;}",
-    ".dmk-row{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-3);}",
-    ".dmk-target{flex:none;font-family:ui-monospace,\"Cascadia Code\",\"Cascadia Mono\",Consolas,Menlo,monospace;font-size:12px;font-weight:600;line-height:20px;}",
-    ".dmk-badge{flex:none;align-self:center;padding:0 6px;height:18px;line-height:18px;border-radius:9px;border:1px solid var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary);font-size:10px;font-weight:600;}",
-    ".dmk-help{flex:1;min-width:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:20px;white-space:normal;overflow-wrap:anywhere;}",
-    ".dmk-copy{flex:none;height:24px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:11px;}",
-    ".dmk-copy:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}",
-    ".dmk-meta{color:var(--dsw-alias-label-secondary);font-size:12px;}",
     ".dmw-action{flex:none;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:none;border-radius:50%;padding:0;background:transparent;cursor:pointer;color:var(--dsw-alias-label-secondary);}",
     ".dmw-action:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);}",
     ".dmw-action svg{flex:none;}",
@@ -72,9 +48,9 @@ function ensureStyles(): void {
     "[class*='scrollBody']:has(.dshfx-split) [class*='composerSeat']{display:none !important;}",
   ].join("\n");
   // Refresh an existing tag in place
-  const existing = document.querySelector("style[data-dmk-styles]");
+  const existing = document.querySelector("style[data-dsh-unknownue-styles]");
   const style = existing !== null ? existing : document.createElement("style");
-  style.setAttribute("data-dmk-styles", "");
+  style.setAttribute("data-dsh-unknownue-styles", "");
   style.textContent = css;
   if (existing === null) document.head.appendChild(style);
 
@@ -96,18 +72,6 @@ const inject = ["slots", "sessions", "workspaces", "locale"];
 function apply(ctx: any): void {
   ensureStyles();
   applyWidth(readWidthPct());
-
-  const makefileInjected = () => ({ sessions: ctx.sessions });
-  ctx.effect(
-    () =>
-      ctx.slots.inject("conversation.session.header.actions", () =>
-        ctx.slots.register(
-          { name: "conversation.session.header.actions", id: "dsh-unknownue-plugins/makefile", inject: makefileInjected },
-          MakefileControl,
-        ),
-      ),
-    "dsh-unknownue-plugins: makefile header action",
-  );
 
   const widthInjected = () => ({ getPct: readWidthPct, setPct: setWidthPct });
   ctx.effect(

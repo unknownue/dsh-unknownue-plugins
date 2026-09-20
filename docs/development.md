@@ -42,14 +42,14 @@ flowchart LR
 | Path | Contents |
 |---|---|
 | `src/host/index.ts` | bundle host row: config resolution, route table, loopback fence |
-| `src/host/makefile.ts` | pure Makefile parser **plus** the shared HTTP helpers (`json`, `readBody`, `isLoopback`, `isLoopbackHost`, `messageOf`) |
+| `src/host/http.ts` | shared HTTP helpers for every loopback route: `json`, `readBody`, `isLoopback`, `isLoopbackHost`, `messageOf` |
 | `src/host/explorer.ts` | file-explorer host half: routes, structural operations, remote routing, fs.watch hub |
 | `src/host/explorer.test.ts` | mock-seam suite for the explorer host half |
 | `src/host/paperspace/**` | paperspace host half: routes, settings, schema, domain, worker, runtime |
 | `src/host/tasks/**` | task-board host half: routes, store, schema, settings |
 | `src/host/types.ts` | locally declared DSH seam types (`ctx.fs`, `ctx.subprocess`, `ctx.webServer`, `ctx.effect`) — minimal honest contracts, no hard `@deepseek-ai/cordis` devDependency |
 | `src/client/index.tsx` | client entry: toolbar buttons, tab wiring, shared CSS injection |
-| `src/client/toolbar/**` | Makefile panel, width control |
+| `src/client/toolbar/**` | content-width control |
 | `src/client/explorer/**`, `src/client/editor/**` | file tree, editor tabs, markdown preview, themes |
 | `src/client/explorer-editor/index.ts` | registers the Files tab and mounts the `remote.fileManager` service |
 | `src/client/paperspace/**`, `src/client/tasks/**` | the Papers and Tasks tabs, their settings pages and stylesheets |
@@ -57,7 +57,7 @@ flowchart LR
 | `scripts/verify-sidebar.mjs` | headless harness for the paperspace right-Sidebar wiring (development-only, not published) |
 
 Built artifacts live in `lib/` and **are committed** (`lib/client.js`,
-`lib/index.js`, `lib/makefile.js`, `lib/explorer.js` +
+`lib/index.js`, `lib/http.js`, `lib/explorer.js` +
 `lib/explorer.test.js`, `lib/paperspace/index.js` +
 `lib/paperspace/paperspace.test.js`, `lib/tasks/index.js` +
 `lib/tasks/tasks.test.js`). Never edit them by hand; `.gitattributes` pins
@@ -109,7 +109,7 @@ npm run build:host   # host only    → lib/*.js
 - **Host** — one ESM entry per module, `target: node22`, `packages: "external"`
   (so PGlite's WASM/data assets and postgres.js keep resolving from
   `node_modules`) and `./*.js` external, which keeps the emitted module graph
-  identical to hand-written files: `lib/index.js` imports `./makefile.js` and
+  identical to hand-written files: `lib/index.js` imports `./http.js` and
   `./explorer.js` at runtime.
 
 ## Typecheck
@@ -163,8 +163,8 @@ covers is documented with the feature: [File explorer](features/file-explorer.md
 ## Adding a feature
 
 1. **Host half** — add `src/host/<feature>.ts` exporting pure helpers plus a
-   `<feature>Dispatch(method, params)` function (the Makefile module is the
-   smallest example). Register its route in `src/host/index.ts` through the
+   `<feature>Dispatch(method, params)` function (the explorer module is the
+   worked example). Register its route in `src/host/index.ts` through the
    shared `registerRoute` helper so it inherits the loopback fence, the `POST`
    check, the bounded JSON body and the `{ ok, value | error }` envelope.
 2. **Browser half** (optional) — add components under `src/client/<feature>/`

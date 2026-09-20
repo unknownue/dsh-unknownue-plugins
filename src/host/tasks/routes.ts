@@ -16,7 +16,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
-import { isLoopback, isLoopbackHost, json, messageOf, readBody } from '../makefile';
+import { isLoopback, isLoopbackHost, json, messageOf, readBody } from '../http';
 import type { TasksRuntime } from './db';
 import {
   archiveCard,

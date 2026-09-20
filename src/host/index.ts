@@ -3,12 +3,11 @@
  *
  * The package itself is a personal DSH plugin bundle: one package, one host
  * plugin row (this module, name == package name), one browser half
- * (lib/client.js). Feature modules (lib/makefile.js, ...) contribute host
+ * (lib/client.js). Feature modules (lib/explorer.js, ...) contribute host
  * routes + execution logic; this file wires them in.
  *
  * Features:
- *   #1 Makefile target discovery (display-only, loopback JSON-RPC route).
- *   #2 Remote-aware file explorer (ctx.fs / ctx.subprocess seams, local + remote).
+ *   #1 Remote-aware file explorer (ctx.fs / ctx.subprocess seams, local + remote).
  *
  * Everything that hands the session workspace directory to an OS program is
  * deliberately NOT implemented here, because DSH ships it already:
@@ -23,19 +22,17 @@
  * Remote workspaces are handled by dsh-workspace-enhancement (dependency).
  * Remote DSH access is handled by dsh-gateway (dependency).
  */
-import { isLoopback, isLoopbackHost, json, makefileDispatch, messageOf, readBody } from "./makefile.js";
+import { isLoopback, isLoopbackHost, json, messageOf, readBody } from "./http.js";
 import { explorerDispatch, registerExplorerWatch, disposeExplorerWatch } from "./explorer.js";
 import type { BundleConfig, HostContext, ExplorerParams } from "./types.js";
 
 const name = "dsh-unknownue-plugins";
 const inject = ["webServer"];
 
-const MAKE_ROUTE = "/dsh-unknownue-plugins/makefile/api";
 const EXPLORER_ROUTE = "/dsh-unknownue-plugins/explorer/api";
 
 function apply(ctx: HostContext, config: BundleConfig = {}): void {
   const resolved = {
-    makefile: config.makefile ?? "Makefile",
     explorer: config.explorer ?? {}
   };
 
@@ -70,7 +67,6 @@ function apply(ctx: HostContext, config: BundleConfig = {}): void {
     }), `dsh-unknownue-plugins: route ${path}`);
   };
 
-  registerRoute(MAKE_ROUTE, (method, params) => makefileDispatch(resolved, method, params));
   registerRoute(EXPLORER_ROUTE, (method, params) => explorerDispatch(ctx, resolved, method, params as ExplorerParams));
 
   ctx.effect(() => {

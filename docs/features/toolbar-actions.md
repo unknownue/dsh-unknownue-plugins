@@ -1,69 +1,34 @@
 # Toolbar actions
 
-Two surfaces belong to the bundle's own host row (`dsh-unknownue-plugins`): the
-**Makefile** panel and the **content width** control. Only the width control is
-pure client-side; the Makefile panel calls a loopback JSON-RPC route served by
-`src/host/index.ts`.
+One surface is left of the bundle's own UI actions: the **content width** control in the sidebar
+footer, which is pure client-side and has no host half. Everything else that used to sit in a
+session header was **removed on purpose**:
 
-Handing the session workspace directory to an OS program used to live here as
-well and was **removed completely**:
+- **Open the workspace directory in the OS file manager** — DSH ships that control itself, as the
+  open-in-app plugin (`@deepseek-ai/dsh-host-open-in-app` + `@deepseek-ai/dsh-client-ui-open-in-app`,
+  routes `/open-in-app/apps`, `/open-in-app/icon`, `/open-in-app/open`), whose session-header
+  **Open In…** button opens the workspace directory in a locally installed application with an app
+  catalog and icons. Removed here: the header button, its route
+  (`/dsh-unknownue-plugins/open/api`), the `openDirectory` host helper and the file explorer's
+  `reveal` method that reached it.
+- **Open terminal at workspace** — the header button that spawned a native terminal window
+  (`/dsh-unknownue-plugins/terminal/api`, `openTerminal`; `cmd.exe` / `osascript` /
+  `x-terminal-emulator`). DSH owns both halves: `dsh-terminal` + `dsh-client-ui-sidebar-terminal`
+  provide the in-GUI terminal, and the open-in-app catalog launches the installed emulators.
+  Removed: the button, the route and the whole `src/host/platform.ts` module.
+- **Makefile panel (display-only)** — the header button that listed the session workspace's make
+  targets with their `##` help and a default badge, behind
+  `/dsh-unknownue-plugins/makefile/api` (`listTargets`, `parseMakefile`). It was a convenience
+  panel rather than a DSH gap, and it never worked as shipped: the browser half posted method
+  `list` with `{ cwd }` while the host dispatched `listTargets` and read `{ workdir }`, so every
+  call came back `unknown method "list"`. Removed: the button, the panel component, the parser,
+  the route and the row's `makefile` key. Read a Makefile through the explorer's file tree or the
+  agent's tooling instead.
 
-- **Open the workspace directory in the OS file manager** — DSH ships that
-  control itself, as the open-in-app plugin
-  (`@deepseek-ai/dsh-host-open-in-app` + `@deepseek-ai/dsh-client-ui-open-in-app`,
-  routes `/open-in-app/apps`, `/open-in-app/icon`, `/open-in-app/open`), whose
-  session-header button opens the workspace directory in a locally installed
-  application with an app catalog and icons. The bundle's own header button, its
-  route (`/dsh-unknownue-plugins/open/api`), the `openDirectory` host helper and
-  the file explorer's `reveal` method that reached it are all gone, so no code
-  path in this bundle opens a directory.
-- **Open terminal at workspace** — a header button that launched a native
-  terminal window (`/dsh-unknownue-plugins/terminal/api`, `openTerminal`), i.e.
-  `cmd.exe /c start "" cmd /k "cd /d <path>"` on Windows,
-  `osascript … tell application "Terminal"` on macOS and
-  `x-terminal-emulator --working-directory <path>` on Linux. DSH owns both halves
-  of that: the open-in-app catalog already lists the installed terminal
-  emulators, and `dsh-terminal` + `dsh-client-ui-sidebar-terminal` provide the
-  in-GUI terminal. Button, route and the `platform.ts` helper module were
-  removed together.
-
-The bundle-row route uses one envelope (see [HTTP API](../reference/http-api.md)):
-`POST` only, loopback-only, body `{ "method": string, "params": object }`,
-response `{ "ok": true, "value": … }` or `{ "ok": false, "error": string }`
-(dispatcher errors keep status `200`, so the panel shows the message text).
-
-## Makefile panel (display-only)
-
-- **Surface** — a header action button
-  (`conversation.session.header.actions` slot, id
-  `dsh-unknownue-plugins/makefile`).
-- **Behaviour** — clicking the button opens a dialog that reads the Makefile for
-  the current session work directory **once, on demand**: there is no polling,
-  no file watcher, and the panel's refresh button re-reads it. Each row shows the
-  target name, a *default* badge, the `##` help text, and a copy button that puts
-  `make <target>` on the clipboard.
-- **Parsing** — `parseMakefile()` is pure and read-once. It collects explicit
-  targets plus `.PHONY` names, skips variable assignments, directives
-  (`include`, `ifeq`, …), comments and indented recipe lines, rejects names
-  containing `%` or starting with `.`, attaches `##` help from either a standalone
-  `## comment` line directly above a target or a trailing `## help` on the
-  target line, sorts targets by name, and reports the **first real target in file
-  order** as the default target.
-- **Configuration** — the `makefile` key on the bundle row (default `Makefile`),
-  resolved against the session work directory; an absolute path is used as-is.
-- **Route** — `POST /dsh-unknownue-plugins/makefile/api`, method `listTargets`,
-  params `{ workdir?, makefile? }`, returning
-  `{ makefile, path, targets: [{ name, help }], defaultTarget }`.
-- **Never executes `make`** — discovery only.
-
-> **Known issue (verified against HEAD, `src/client/toolbar/MakefileControl.tsx`
-> vs `src/host/makefile.ts`)** — the panel calls method `list` with `{ cwd }`,
-> while the host only accepts `listTargets` with `{ workdir }` and answers
-> `{ targets, defaultTarget }` (the client expects `{ targets, cwd }` and a
-> per-target `isDefault` flag). As shipped, the panel therefore reports
-> `unknown method "list"`, and — even with the method fixed — would read the
-> server process's working directory instead of the session's, and never show
-> the default badge. Fix both sides together, then rebuild `lib/`.
+The bundle's host row (`src/host/index.ts`) therefore registers a single route, the file explorer's
+`/dsh-unknownue-plugins/explorer/api`, plus the explorer's watch channel; the browser half
+registers the width control and the three view tabs. Nothing in this bundle launches an OS program
+on the workspace any more.
 
 ## Content width
 
@@ -82,15 +47,10 @@ response `{ "ok": true, "value": … }` or `{ "ok": false, "error": string }`
 
 ## Limitations
 
-- Every action above runs on the **DSH host machine** and uses Node's local
-  filesystem (`stat`/`readFile`), so they only work for sessions whose work
-  directory exists locally. In a remote (SSH) session the session cwd is a
-  remote path that these routes cannot read — use the remote workspace tooling
-  instead (see [Integrations](../integrations.md)).
-- The Makefile panel's status strings (refresh/copy/loading/labels) are
-  hard-coded in the component instead of coming from the locale dictionaries, so
-  that panel does not follow the UI language; the width control carries fixed
-  English `title`/`aria-label` text.
+- The width control carries fixed English `title` / `aria-label` text and keeps its value in
+  browser storage, so it is per browser profile and does not follow the UI language.
+- The removed Makefile panel is documented here only as history: nothing in the bundle reads a
+  Makefile or runs `make` any more.
 
 ## Related
 

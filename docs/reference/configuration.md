@@ -2,7 +2,7 @@
 
 Everything this bundle can be told to do, and where each setting lives. Configuration stacks in three layers:
 
-1. **Bundle patch** — `cordis.patch.yml` ships inside the package and inserts three host rows: `dsh-unknownue-plugins` (toolbar actions + file explorer), `paperspace`, and `tasks`. It applies wherever the bundle is installed (see [Integrations](../integrations.md)).
+1. **Bundle patch** — `cordis.patch.yml` ships inside the package and inserts three host rows: `dsh-unknownue-plugins` (file explorer + the client-side width control), `paperspace`, and `tasks`. It applies wherever the bundle is installed (see [Integrations](../integrations.md)).
 2. **Your patch layer** — a profile's `cordis.patch.yml`, and above it `<dsh home>/cordis.patch.yml`, patch those rows by `id`. See [Overriding in a profile](#overriding-in-a-profile).
 3. **Runtime settings and browser preferences** — the paperspace and tasks Settings sections persist to `<dsh home>/<feature>/settings.json`, while pure-UI preferences live in the browser's `localStorage` / `sessionStorage`. See [Paperspace settings file](#paperspace-settings-file) and [Browser-local preferences](#browser-local-preferences).
 
@@ -12,14 +12,13 @@ Everything this bundle can be told to do, and where each setting lives. Configur
 
 | key | default | meaning |
 |-----|---------|---------|
-| `makefile` | `Makefile` | Makefile name or absolute path the toolbar panel lists. A relative value resolves against the session's `workdir` (or `process.cwd()` when none is given). |
 | `explorer.maxListEntries` | `1000` | Maximum entries returned per directory listing; the rest are cut off and the reply carries `truncated: true`. |
 | `explorer.maxReadBytes` | `1048576` (1 MiB) | Text-read cap. A larger file returns `{ tooLarge: true, size, world }` instead of content. |
 | `explorer.maxRawBytes` | `8388608` (8 MiB) | Cap for binary previews and inline data URLs (`raw`, `readDataUrl`); oversize reads error out. |
 | `explorer.structuralGraceMs` | `8000` (ms) | Grace period handed to `ctx.subprocess.spawn` for remote structural commands (mkdir / touch / mv / cp / rm). |
 | `explorer.stderrTailBytes` | `8192` (bytes) | stderr tail collected from remote structural commands and quoted in error messages. |
 
-Each numeric value is honored only when `Number(value) > 0`; anything else falls back to the default above, so a partially specified `explorer` block is safe. The toolbar and explorer routes this row registers are inventoried in [HTTP API](./http-api.md).
+Each numeric value is honored only when `Number(value) > 0`; anything else falls back to the default above, so a partially specified `explorer` block is safe. The explorer route this row registers is inventoried in [HTTP API](./http-api.md); the row's other half, the content-width control, is browser-only and takes no configuration.
 
 ## Paperspace row and settings
 
@@ -121,7 +120,6 @@ Patch layers are applied in order — bundle patches, then the profile's `cordis
 # <profile>/cordis.patch.yml (or <dsh home>/cordis.patch.yml, which outranks it)
 - id: dsh-unknownue-plugins
   config:
-    makefile: Makefile
     explorer:
       maxListEntries: 2000
       maxReadBytes: 1048576

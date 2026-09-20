@@ -25,7 +25,7 @@ import { createReadStream, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
-import { isLoopback, isLoopbackHost, json, messageOf, readBody } from '../makefile';
+import { isLoopback, isLoopbackHost, json, messageOf, readBody } from '../http';
 import { ensurePaperMarkdown, removePaperMarkdown } from './dsh-integration';
 import { createAssetRepo, createPaperRepo, createTranslationRepo } from './domain/index';
 import { createSessionLinkRepo } from './domain/session-links';

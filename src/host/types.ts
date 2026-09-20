@@ -110,7 +110,6 @@ export interface ExplorerLimits {
 }
 
 export interface BundleConfig {
-  makefile?: string;
   explorer?: Partial<ExplorerLimits>;
 }
 
