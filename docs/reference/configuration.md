@@ -89,7 +89,7 @@ Saving while the runtime is already up compares the whole effective config again
 | `WORKER_POLL_MS`, `INGEST_TIMEOUT_MS`, `MAX_ASSET_BYTES`, `INGEST_CONCURRENCY`, `TRANSLATE_MAX_ATTEMPTS`, `TRANSLATE_STUCK_AFTER_MINUTES`, `TRANSLATE_TIMEOUT_MS`, `RESCAN_INTERVAL_MS` | paperspace worker loops | Per-tunable overrides (`envNumber` in `worker/loops.ts`): each wins over the stored/row value whenever it parses as a number, and is ignored otherwise. |
 | `HTTPS_PROXY` / `https_proxy` | paperspace fetch layer | Proxy used when the `proxy` setting is empty, checked in this order. Node's built-in `fetch` ignores these variables on its own; the bundle injects an undici `ProxyAgent`. |
 | `HTTP_PROXY` / `http_proxy` | paperspace fetch layer | Second fallback pair, checked after the HTTPS pair. |
-| `SystemRoot` | terminal route on Windows (and the explorer's `reveal` action) | Base for `System32\cmd.exe` and `explorer.exe`. Default `C:\Windows`. |
+| `SystemRoot` | terminal route on Windows | Base for `System32\cmd.exe`. Default `C:\Windows`. |
 
 The `proxy` setting always wins over the environment; resolution order is config → `HTTPS_PROXY` → `https_proxy` → `HTTP_PROXY` → `http_proxy`.
 

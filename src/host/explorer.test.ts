@@ -133,7 +133,7 @@ async function rejects(label: string, promise: Promise<unknown>, pattern: RegExp
 check("worldOf ssh://", worldOf({ targetKey: "ssh://c1/a", displayPath: "/a" }), "remote");
 check("worldOf local", worldOf({ targetKey: "C:/a", displayPath: "C:/a" }), "local");
 
-// parentPathOf — both separator families (the Windows reveal bug regression)
+// parentPathOf — both separator families (the file-watch dirname regression)
 check("parentPathOf windows", parentPathOf("C:\\Users\\u\\Temp\\x\\f.txt", "local"), "C:\\Users\\u\\Temp\\x");
 check("parentPathOf posix", parentPathOf("/home/u/work/b.txt", "local"), "/home/u/work");
 check("parentPathOf remote", parentPathOf("/home/u/work/b.txt", "remote"), "/home/u/work");
@@ -187,7 +187,6 @@ check("spelling empty", parseRemoteSpelling(""), null);
   await call(ctx, "delete", { cwd: "ssh://c1/home/u", path: "/home/u/work" });
   check("remote delete argv", remoteLog[3].argv, ["rm", "-rf", "--", "/home/u/work"]);
 
-  await rejects("remote reveal refused", call(ctx, "reveal", { cwd: "ssh://c1/home/u", path: "/home/u/notes.md" }), /remote/);
   await rejects("remote structural no subprocess", (async () => {
     const bare: ServiceBag = { get: (n: string) => (n === "fs" ? makeFs("remote") : undefined) };
     await call(bare, "mkdir", { cwd: "ssh://c1/home/u", path: "/home/u", name: "x" });

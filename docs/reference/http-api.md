@@ -26,7 +26,13 @@ Two payload conventions coexist:
 
 `workdir` defaults to `process.cwd()`; a relative `makefile` resolves against it and defaults to the row's `makefile` setting. The terminal route requires the path to exist and be a directory, otherwise `{ ok: false, error: ... }`.
 
-Opening a directory in the OS file manager is **not** part of this bundle: the route (`/dsh-unknownue-plugins/open/api`) and its header button were removed in favour of DSH's own open-in-app plugin, which serves `/open-in-app/apps`, `/open-in-app/icon` and `/open-in-app/open`. See [Toolbar actions](../features/toolbar-actions.md).
+Opening a directory in the OS file manager is **not** part of this bundle. DSH ships that control itself as
+the open-in-app plugin (`@deepseek-ai/dsh-host-open-in-app` + `@deepseek-ai/dsh-client-ui-open-in-app`,
+routes `/open-in-app/apps`, `/open-in-app/icon`, `/open-in-app/open`), whose session-header **Open In…**
+button launches the session workspace directory in a locally installed application. This bundle's own
+route (`/dsh-unknownue-plugins/open/api`), its header button and the last host-side helper
+(`platform.openDirectory`, reached only through the file explorer's `reveal` method) were all removed,
+so no code path here opens a directory. See [Toolbar actions](../features/toolbar-actions.md).
 
 Note a live caller/host mismatch: the shipped browser half posts `{ method: 'list', params: { cwd } }` for the Makefile route, while the host dispatches only `listTargets` and reads `workdir` — that call currently comes back as `{ ok: false, error: 'unknown method "list"' }`.
 
@@ -54,7 +60,6 @@ One POST endpoint carries a JSON-RPC dispatch; one GET endpoint streams watch ev
 | `touch` | `cwd`, `path`, `name` | `{ ok, world, path }` |
 | `rename` | `cwd`, `path`, `name` | `{ ok, world, path }` (renames in place) |
 | `delete` | `cwd`, `path` | `{ ok, world, path }`; recursive |
-| `reveal` | `cwd`, `path` | `{ ok, world, path }`; opens the parent directory, local world only |
 | `setRoot` | `cwd`, `path` | `{ path, world }`; pins the watch root (remote worlds clear it) |
 
 `world` is `"local"` or `"remote"` (decided by the resolved target key: `ssh://` means remote). `name` must be a single path segment — separators are rejected.

@@ -28,7 +28,6 @@ import { extname, join } from "node:path";
 import { join as posixJoin } from "node:path/posix";
 import type { ServerResponse } from "node:http";
 import { messageOf } from "./makefile.js";
-import { openDirectory } from "./platform.js";
 import type {
   BundleConfig,
   ExplorerLimits,
@@ -417,17 +416,6 @@ export function parentPathOf(path: unknown, world: ExecutionWorld): string {
   return /[\\/]/.test(value) ? value.replace(/[\\/][^\\/]*$/, "") : value;
 }
 
-/** Open the file's parent directory in the OS file manager (local world only). */
-async function reveal(ctx: ServiceBag, _config: BundleConfig, params: ExplorerParams): Promise<{ ok: true; world: ExecutionWorld; path: string }> {
-  const { fs } = servicesOf(ctx, cwdOf(params));
-  const target = await resolveTarget(fs, params);
-  const world = worldOf(target);
-  if (world !== "local") throw new Error("reveal: remote paths cannot be opened in the local file manager");
-  const parent = parentPathOf(opPath(target, "local", fs), "local");
-  await openDirectory({ path: parent });
-  return { ok: true, world, path: parent };
-}
-
 // ── live refresh (SSE watch channel, local-world roots only) ────────────────
 // Ported from oneirictouch/dsh-explorer-editor's watcher (MIT): a recursive
 // fs.watch on the pinned local root pushes debounced directory-change events
@@ -729,7 +717,6 @@ export async function explorerDispatch(ctx: ServiceBag, config: BundleConfig, me
       case "rename": return await renameEntry(ctx, config, params);
       case "delete": return await deleteEntry(ctx, config, params);
       case "raw": return await raw(ctx, config, params);
-      case "reveal": return await reveal(ctx, config, params);
       case "readDataUrl": return await readDataUrl(ctx, config, params);
       case "createFile": return await createFile(ctx, config, params);
       case "createDirectory": return await createDirectory(ctx, config, params);

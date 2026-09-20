@@ -43,7 +43,7 @@ flowchart LR
 |---|---|
 | `src/host/index.ts` | bundle host row: config resolution, route table, loopback fence |
 | `src/host/makefile.ts` | pure Makefile parser **plus** the shared HTTP helpers (`json`, `readBody`, `isLoopback`, `isLoopbackHost`, `messageOf`) |
-| `src/host/platform.ts` | open terminal in the host OS (plus `openDirectory`, consumed by the explorer's `reveal` action) |
+| `src/host/platform.ts` | open a terminal window in the host OS (the bundle carries no directory-opening code: DSH's open-in-app plugin owns that) |
 | `src/host/explorer.ts` | file-explorer host half: routes, structural operations, remote routing, fs.watch hub |
 | `src/host/explorer.test.ts` | mock-seam suite for the explorer host half |
 | `src/host/paperspace/**` | paperspace host half: routes, settings, schema, domain, worker, runtime |

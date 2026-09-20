@@ -5,12 +5,15 @@ Three surfaces belong to the bundle's own host row (`dsh-unknownue-plugins`): th
 workspace**. Only the width control is pure client-side; the other two call a
 loopback JSON-RPC route served by `src/host/index.ts`.
 
-Opening the session workspace in the OS file manager used to live here as well
-and was **removed**: DSH ships that control itself, as the open-in-app plugin
+Opening the session workspace directory in the OS file manager used to live here as well and was
+**removed completely**: DSH ships that control itself, as the open-in-app plugin
 (`@deepseek-ai/dsh-host-open-in-app` + `@deepseek-ai/dsh-client-ui-open-in-app`,
 routes `/open-in-app/apps`, `/open-in-app/icon`, `/open-in-app/open`), whose
 session-header button opens the workspace directory in a locally installed
-application with an app catalog and icons. This bundle does not duplicate it.
+application with an app catalog and icons. The bundle's own header button, its
+route (`/dsh-unknownue-plugins/open/api`), the `openDirectory` host helper and the
+file explorer's `reveal` method that reached it are all gone, so no code path in
+this bundle opens a directory. This bundle does not duplicate it.
 
 Both routes share one envelope (see [HTTP API](../reference/http-api.md)):
 `POST` only, loopback-only, body `{ "method": string, "params": object }`,

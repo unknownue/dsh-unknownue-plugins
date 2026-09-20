@@ -114,13 +114,18 @@ Dispatch actions (`explorerDispatch` in `src/host/explorer.ts`):
 | `mkdir` / `touch` | `cwd`, `path` (parent), `name` | one child under an existing directory parent |
 | `rename` | `cwd`, `path`, `name` | same-directory rename of an existing source |
 | `delete` | `cwd`, `path` | recursive delete (`rm -rf`) - not used by the shipped UI |
-| `reveal` | `cwd`, `path` | opens the parent directory in the OS file manager; local world only |
 | `setRoot` | `cwd`, `path` | directory only; pins the local watch root, clears it for remote roots |
 
 The shipped UI calls `list`, `read`, `write`, `readDataUrl`, `createFile`, `createDirectory`,
 `renamePath`, `copyPath`, `deletePath`, `statPath`, `resolvePath` and `setRoot`; `raw`, `mkdir`, `touch`,
-`rename`, `delete` and `reveal` exist on the host but are not exposed by the ported client adapter
+`rename` and `delete` exist on the host but are not exposed by the ported client adapter
 (`src/client/explorer/remote.ts`).
+
+Opening a directory in the OS file manager is **not** part of this bundle: the ported host method
+(`reveal`, which launched the parent directory through `platform.openDirectory`) was removed together
+with the toolbar action that used it, because DSH ships the capability itself as the open-in-app plugin
+(session-header **Open In…** button, routes `/open-in-app/*`). See
+[Toolbar actions](toolbar-actions.md).
 
 **Security fence.** The JSON-RPC route is loopback-only: a request whose socket address is not
 `127.0.0.1` / `::1` / `::ffff:127.0.0.1`, or whose `Host` header is not a loopback host, gets
@@ -223,12 +228,12 @@ npm run typecheck              # tsc --noEmit for both tsconfigs
 
 `lib/explorer.test.js` is built from `src/host/explorer.test.ts` by `npm run build`. It is a plain
 script with no test framework: it prints `<n> passed, <n> failed` and exits non-zero if any check fails
-(verified: 57 passed, 0 failed). It drives `explorerDispatch` against a mock context that fakes the
+(verified: 56 passed, 0 failed). It drives `explorerDispatch` against a mock context that fakes the
 `ctx.fs` / `ctx.subprocess` seams for a local and a remote world (the mock fs keeps its own
 directory/file tables, the mock subprocess records every argv), covering:
 
 - `worldOf` and `parentPathOf` across Windows, posix and remote separators (including the root-file and
-  no-separator cases - the Windows reveal regression), and `parseRemoteSpelling` for `ssh://`, the
+  no-separator cases - the file-watch dirname regression), and `parseRemoteSpelling` for `ssh://`, the
   `dsw-routes` placeholder tree, the legacy `dsh-ssh-routes` tree and plain local spellings;
 - the local world: `list` / `read` / `write`, the read-only (`fs: r`) write rejection, a missing-file
   `raw` rejection, an unknown method and a NUL-containing path;
@@ -236,7 +241,7 @@ directory/file tables, the mock subprocess records every argv), covering:
   paths resolving with the cwd stripped under a remote cwd, posix-absolute paths keeping the remote
   routing, and the spawn cwd pinned to `ssh://<id>/` for structural operations;
 - the remote world: `list` / `read`, the exact argv of `mkdir -p --`, `touch --`, `mv -T --` and
-  `rm -rf --`, `reveal` refusal, the missing-subprocess error, and the editor-style full-path methods
+  `rm -rf --`, the missing-subprocess error, and the editor-style full-path methods
   (`createFile` probe + touch, `createDirectory`, `renamePath`, `copyPath` probe + `cp -r --`,
   `deletePath` as `rmdir --` / `rm --`, `statPath`, `readDataUrl`, `resolvePath`, `setRoot`).
 
