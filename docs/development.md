@@ -43,14 +43,13 @@ flowchart LR
 |---|---|
 | `src/host/index.ts` | bundle host row: config resolution, route table, loopback fence |
 | `src/host/makefile.ts` | pure Makefile parser **plus** the shared HTTP helpers (`json`, `readBody`, `isLoopback`, `isLoopbackHost`, `messageOf`) |
-| `src/host/platform.ts` | open a terminal window in the host OS (the bundle carries no directory-opening code: DSH's open-in-app plugin owns that) |
 | `src/host/explorer.ts` | file-explorer host half: routes, structural operations, remote routing, fs.watch hub |
 | `src/host/explorer.test.ts` | mock-seam suite for the explorer host half |
 | `src/host/paperspace/**` | paperspace host half: routes, settings, schema, domain, worker, runtime |
 | `src/host/tasks/**` | task-board host half: routes, store, schema, settings |
 | `src/host/types.ts` | locally declared DSH seam types (`ctx.fs`, `ctx.subprocess`, `ctx.webServer`, `ctx.effect`) — minimal honest contracts, no hard `@deepseek-ai/cordis` devDependency |
 | `src/client/index.tsx` | client entry: toolbar buttons, tab wiring, shared CSS injection |
-| `src/client/toolbar/**` | Makefile panel, width control, open terminal button |
+| `src/client/toolbar/**` | Makefile panel, width control |
 | `src/client/explorer/**`, `src/client/editor/**` | file tree, editor tabs, markdown preview, themes |
 | `src/client/explorer-editor/index.ts` | registers the Files tab and mounts the `remote.fileManager` service |
 | `src/client/paperspace/**`, `src/client/tasks/**` | the Papers and Tasks tabs, their settings pages and stylesheets |
@@ -58,7 +57,7 @@ flowchart LR
 | `scripts/verify-sidebar.mjs` | headless harness for the paperspace right-Sidebar wiring (development-only, not published) |
 
 Built artifacts live in `lib/` and **are committed** (`lib/client.js`,
-`lib/index.js`, `lib/makefile.js`, `lib/platform.js`, `lib/explorer.js` +
+`lib/index.js`, `lib/makefile.js`, `lib/explorer.js` +
 `lib/explorer.test.js`, `lib/paperspace/index.js` +
 `lib/paperspace/paperspace.test.js`, `lib/tasks/index.js` +
 `lib/tasks/tasks.test.js`). Never edit them by hand; `.gitattributes` pins
@@ -110,8 +109,8 @@ npm run build:host   # host only    → lib/*.js
 - **Host** — one ESM entry per module, `target: node22`, `packages: "external"`
   (so PGlite's WASM/data assets and postgres.js keep resolving from
   `node_modules`) and `./*.js` external, which keeps the emitted module graph
-  identical to hand-written files: `lib/index.js` imports `./makefile.js`,
-  `./explorer.js` and `./platform.js` at runtime.
+  identical to hand-written files: `lib/index.js` imports `./makefile.js` and
+  `./explorer.js` at runtime.
 
 ## Typecheck
 

@@ -14,7 +14,7 @@ if (!isLoopback(req.socket.remoteAddress) || !isLoopbackHost(req.headers.host)) 
 
 Two payload conventions coexist:
 
-- **Bundle-row routes** (`makefile`, `terminal`, `explorer`) are JSON-RPC: body `{ method, params }`, reply `{ ok: true, value }` or `{ ok: false, error }` — both with HTTP 200. Parse/shape problems are 400, a non-POST request is 405.
+- **Bundle-row routes** (`makefile`, `explorer`) are JSON-RPC: body `{ method, params }`, reply `{ ok: true, value }` or `{ ok: false, error }` — both with HTTP 200. Parse/shape problems are 400, a non-POST request is 405.
 - **Paperspace and tasks** are REST: JSON bodies and `{ code, message }` errors.
 
 ## Toolbar and workspace actions
@@ -22,17 +22,19 @@ Two payload conventions coexist:
 | method | path | purpose | request body | response |
 |--------|------|---------|--------------|----------|
 | POST | `/dsh-unknownue-plugins/makefile/api` | List Makefile targets with `##` help and the default target. Display-only: `make` is never executed. | `{ method: 'listTargets', params: { workdir?, makefile? } }` | `{ ok: true, value: { makefile, path, targets: [{ name, help }], defaultTarget } }` |
-| POST | `/dsh-unknownue-plugins/terminal/api` | Open a terminal window at a directory (Windows `cmd`, macOS Terminal, Linux `x-terminal-emulator`). | `{ method: 'openTerminal', params: { path } }` | `{ ok: true, value: { opened, command } }` |
 
-`workdir` defaults to `process.cwd()`; a relative `makefile` resolves against it and defaults to the row's `makefile` setting. The terminal route requires the path to exist and be a directory, otherwise `{ ok: false, error: ... }`.
+`workdir` defaults to `process.cwd()`; a relative `makefile` resolves against it and defaults to the row's `makefile` setting. A missing file answers `{ ok: false, error: ... }`.
 
-Opening a directory in the OS file manager is **not** part of this bundle. DSH ships that control itself as
-the open-in-app plugin (`@deepseek-ai/dsh-host-open-in-app` + `@deepseek-ai/dsh-client-ui-open-in-app`,
-routes `/open-in-app/apps`, `/open-in-app/icon`, `/open-in-app/open`), whose session-header **Open In…**
-button launches the session workspace directory in a locally installed application. This bundle's own
-route (`/dsh-unknownue-plugins/open/api`), its header button and the last host-side helper
-(`platform.openDirectory`, reached only through the file explorer's `reveal` method) were all removed,
-so no code path here opens a directory. See [Toolbar actions](../features/toolbar-actions.md).
+Neither **opening a directory** (`/dsh-unknownue-plugins/open/api`) nor **opening a terminal window**
+(`/dsh-unknownue-plugins/terminal/api`) is part of this bundle any more: both the header buttons and the
+routes were removed, because DSH ships the capability itself. The open-in-app plugin
+(`@deepseek-ai/dsh-host-open-in-app` + `@deepseek-ai/dsh-client-ui-open-in-app`, routes
+`/open-in-app/apps`, `/open-in-app/icon`, `/open-in-app/open`) puts a session-header **Open In…** button on
+the session workspace directory whose application catalog covers editors, Git GUIs, terminal emulators and
+the file manager; the in-GUI terminal is `dsh-terminal` + `dsh-client-ui-sidebar-terminal`. The removed
+host helpers (`platform.openDirectory`, `platform.openTerminal`) and the file explorer's `reveal` method
+are gone with them, so no code path here launches an OS program on the workspace. See
+[Toolbar actions](../features/toolbar-actions.md).
 
 Note a live caller/host mismatch: the shipped browser half posts `{ method: 'list', params: { cwd } }` for the Makefile route, while the host dispatches only `listTargets` and reads `workdir` — that call currently comes back as `{ ok: false, error: 'unknown method "list"' }`.
 

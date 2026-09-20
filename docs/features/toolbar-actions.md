@@ -1,21 +1,33 @@
 # Toolbar actions
 
-Three surfaces belong to the bundle's own host row (`dsh-unknownue-plugins`): the
-**Makefile** panel, the **content width** control, and **open terminal at
-workspace**. Only the width control is pure client-side; the other two call a
-loopback JSON-RPC route served by `src/host/index.ts`.
+Two surfaces belong to the bundle's own host row (`dsh-unknownue-plugins`): the
+**Makefile** panel and the **content width** control. Only the width control is
+pure client-side; the Makefile panel calls a loopback JSON-RPC route served by
+`src/host/index.ts`.
 
-Opening the session workspace directory in the OS file manager used to live here as well and was
-**removed completely**: DSH ships that control itself, as the open-in-app plugin
-(`@deepseek-ai/dsh-host-open-in-app` + `@deepseek-ai/dsh-client-ui-open-in-app`,
-routes `/open-in-app/apps`, `/open-in-app/icon`, `/open-in-app/open`), whose
-session-header button opens the workspace directory in a locally installed
-application with an app catalog and icons. The bundle's own header button, its
-route (`/dsh-unknownue-plugins/open/api`), the `openDirectory` host helper and the
-file explorer's `reveal` method that reached it are all gone, so no code path in
-this bundle opens a directory. This bundle does not duplicate it.
+Handing the session workspace directory to an OS program used to live here as
+well and was **removed completely**:
 
-Both routes share one envelope (see [HTTP API](../reference/http-api.md)):
+- **Open the workspace directory in the OS file manager** — DSH ships that
+  control itself, as the open-in-app plugin
+  (`@deepseek-ai/dsh-host-open-in-app` + `@deepseek-ai/dsh-client-ui-open-in-app`,
+  routes `/open-in-app/apps`, `/open-in-app/icon`, `/open-in-app/open`), whose
+  session-header button opens the workspace directory in a locally installed
+  application with an app catalog and icons. The bundle's own header button, its
+  route (`/dsh-unknownue-plugins/open/api`), the `openDirectory` host helper and
+  the file explorer's `reveal` method that reached it are all gone, so no code
+  path in this bundle opens a directory.
+- **Open terminal at workspace** — a header button that launched a native
+  terminal window (`/dsh-unknownue-plugins/terminal/api`, `openTerminal`), i.e.
+  `cmd.exe /c start "" cmd /k "cd /d <path>"` on Windows,
+  `osascript … tell application "Terminal"` on macOS and
+  `x-terminal-emulator --working-directory <path>` on Linux. DSH owns both halves
+  of that: the open-in-app catalog already lists the installed terminal
+  emulators, and `dsh-terminal` + `dsh-client-ui-sidebar-terminal` provide the
+  in-GUI terminal. Button, route and the `platform.ts` helper module were
+  removed together.
+
+The bundle-row route uses one envelope (see [HTTP API](../reference/http-api.md)):
 `POST` only, loopback-only, body `{ "method": string, "params": object }`,
 response `{ "ok": true, "value": … }` or `{ "ok": false, "error": string }`
 (dispatcher errors keep status `200`, so the panel shows the message text).
@@ -68,17 +80,6 @@ response `{ "ok": true, "value": … }` or `{ "ok": false, "error": string }`
 - **No host involvement** — this is the feature formerly shipped as the separate
   `dsh-ui-width` plugin.
 
-## Open terminal at workspace
-
-- **Surface** — a header action button (id `dsh-unknownue-plugins/terminal`).
-- **Route** — `POST /dsh-unknownue-plugins/terminal/api`, method
-  `openTerminal`, params `{ path }`; the path must be a non-empty string naming
-  an existing **directory**.
-- **Host behaviour** — Windows: `cmd.exe /c start "" cmd /k "cd /d <path>"`
-  (the `/d` flag switches drives); macOS:
-  `osascript -e 'tell application "Terminal" to do script "cd <path>"'`; Linux:
-  `x-terminal-emulator --working-directory <path>`.
-
 ## Limitations
 
 - Every action above runs on the **DSH host machine** and uses Node's local
@@ -89,8 +90,7 @@ response `{ "ok": true, "value": … }` or `{ "ok": false, "error": string }`
 - The Makefile panel's status strings (refresh/copy/loading/labels) are
   hard-coded in the component instead of coming from the locale dictionaries, so
   that panel does not follow the UI language; the width control carries fixed
-  English `title`/`aria-label` text, and the terminal button's tooltip is
-  hard-coded in Chinese.
+  English `title`/`aria-label` text.
 
 ## Related
 

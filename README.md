@@ -15,7 +15,6 @@ instead of failing.
 | --- | --- | --- |
 | **Makefile panel** — lists the session workspace's make targets (`##` help, `.PHONY` names, default badge) and copies `make <target>`; display-only, never runs `make` | session header button | [Toolbar actions](docs/features/toolbar-actions.md) |
 | **Content width** — 50–150 % slider in 5 % steps for the chat/content column, remembered per browser | sidebar footer button | [Toolbar actions](docs/features/toolbar-actions.md) |
-| **Open terminal at workspace** — opens a terminal window in the session's work directory | session header button | [Toolbar actions](docs/features/toolbar-actions.md) |
 | **File explorer** — a `Files` tab that is a split pane (file tree + editor) with editor tabs (Ctrl/Cmd+S), markdown preview, context-menu file operations, themes and live refresh; local **and** remote (SSH) workspaces | conversation view tab | [File explorer](docs/features/file-explorer.md) |
 | **Paperspace** — arXiv library, reader (math, TOC, figure lightbox) and AI translation, running inside the DSH process: embedded PGlite, local object store, no Docker and no separate worker | `Papers` conversation tab, right-Sidebar page tab, session header badge, composer paper picker, UnPlugin settings | [Paperspace](docs/features/paperspace.md) |
 | **Tasks** — personal kanban + list board with tags, subtasks and optional due dates, maintained by hand (no agent surface) | `Tasks` conversation tab, UnPlugin settings | [Tasks](docs/features/tasks.md) |
@@ -82,7 +81,7 @@ Three layers, all documented in
 
 | Document | Covers |
 | --- | --- |
-| [Toolbar actions](docs/features/toolbar-actions.md) | Makefile panel, content width, open terminal |
+| [Toolbar actions](docs/features/toolbar-actions.md) | Makefile panel, content width, and the OS actions DSH owns instead |
 | [File explorer](docs/features/file-explorer.md) | the `Files` tab, editor, file operations, remote behaviour, limits |
 | [Paperspace](docs/features/paperspace.md) | the `Papers` tab and sidebar pane, reader, translation, architecture, operations |
 | [Tasks](docs/features/tasks.md) | the `Tasks` tab: board, list, archive, due dates, tags, subtasks, data layer |

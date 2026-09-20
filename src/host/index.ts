@@ -8,33 +8,30 @@
  *
  * Features:
  *   #1 Makefile target discovery (display-only, loopback JSON-RPC route).
- *   #2 Open a terminal window at the current session's working directory.
- *   #3 Remote-aware file explorer (ctx.fs / ctx.subprocess seams, local + remote).
+ *   #2 Remote-aware file explorer (ctx.fs / ctx.subprocess seams, local + remote).
  *
- * Opening the session workspace directory in the OS file manager is deliberately
- * NOT implemented here: DSH ships that already (the official open-in-app plugin,
- * `@deepseek-ai/dsh-host-open-in-app` + `@deepseek-ai/dsh-client-ui-open-in-app`,
- * routes `/open-in-app/*`), so this bundle no longer duplicates it.
+ * Everything that hands the session workspace directory to an OS program is
+ * deliberately NOT implemented here, because DSH ships it already:
+ *   - open-in-app (`@deepseek-ai/dsh-host-open-in-app` +
+ *     `@deepseek-ai/dsh-client-ui-open-in-app`, routes `/open-in-app/*`) puts a
+ *     session-header button on the workspace directory with an application
+ *     catalog (editors, Git GUIs, terminals, the file manager);
+ *   - the terminal itself is a DSH surface too (`dsh-terminal` +
+ *     `dsh-client-ui-sidebar-terminal`), so a native window is not this bundle's
+ *     job either.
  *
  * Remote workspaces are handled by dsh-workspace-enhancement (dependency).
  * Remote DSH access is handled by dsh-gateway (dependency).
  */
 import { isLoopback, isLoopbackHost, json, makefileDispatch, messageOf, readBody } from "./makefile.js";
 import { explorerDispatch, registerExplorerWatch, disposeExplorerWatch } from "./explorer.js";
-import { openTerminal } from "./platform.js";
 import type { BundleConfig, HostContext, ExplorerParams } from "./types.js";
 
 const name = "dsh-unknownue-plugins";
 const inject = ["webServer"];
 
 const MAKE_ROUTE = "/dsh-unknownue-plugins/makefile/api";
-const TERMINAL_ROUTE = "/dsh-unknownue-plugins/terminal/api";
 const EXPLORER_ROUTE = "/dsh-unknownue-plugins/explorer/api";
-
-async function terminalDispatch(method: string, params: Record<string, unknown>) {
-  if (method !== "openTerminal") throw new Error(`unknown method "${method}"`);
-  return openTerminal({ path: params.path as string });
-}
 
 function apply(ctx: HostContext, config: BundleConfig = {}): void {
   const resolved = {
@@ -74,7 +71,6 @@ function apply(ctx: HostContext, config: BundleConfig = {}): void {
   };
 
   registerRoute(MAKE_ROUTE, (method, params) => makefileDispatch(resolved, method, params));
-  registerRoute(TERMINAL_ROUTE, terminalDispatch);
   registerRoute(EXPLORER_ROUTE, (method, params) => explorerDispatch(ctx, resolved, method, params as ExplorerParams));
 
   ctx.effect(() => {

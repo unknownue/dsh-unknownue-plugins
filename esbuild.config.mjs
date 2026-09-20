@@ -163,15 +163,14 @@ if (want("client")) {
 // ── host half ───────────────────────────────────────────────────────────────
 // One ESM entry per feature module, emitted to lib/ alongside the client
 // bundle. Imports between entry points stay external (index.js imports
-// makefile.js / explorer.js / platform.js exactly as the hand-written files
-// did), so the runtime module graph is unchanged.
+// makefile.js / explorer.js exactly as the hand-written files did), so the
+// runtime module graph is unchanged.
 
 if (want("host")) {
   await build({
     entryPoints: [
       "src/host/index.ts",
       "src/host/makefile.ts",
-      "src/host/platform.ts",
       "src/host/explorer.ts",
       "src/host/explorer.test.ts",
       "src/host/paperspace/index.ts",
@@ -188,13 +187,13 @@ if (want("host")) {
     // (PGlite WASM/data files, postgres.js) keeps working at runtime.
     packages: "external",
     // Keep imports between feature modules as-is (index.js imports
-    // ./makefile.js / ./explorer.js / ./platform.js at runtime, exactly like
-    // the hand-written files did), instead of inlining everything into the
-    // entry that happens to import it.
+    // ./makefile.js / ./explorer.js at runtime, exactly like the hand-written
+    // files did), instead of inlining everything into the entry that happens to
+    // import it.
     external: ["./*.js"],
     minify: false,
     sourcemap: false,
   });
 
-  console.log("✓ Built host modules (index, makefile, platform, explorer, explorer.test, paperspace, paperspace.test, tasks, tasks.test)");
+  console.log("✓ Built host modules (index, makefile, explorer, explorer.test, paperspace, paperspace.test, tasks, tasks.test)");
 }

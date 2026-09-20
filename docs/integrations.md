@@ -89,7 +89,7 @@ crash.
 | `ctx.webServer.register` (exact-path routes) | host row, explorer, paperspace, tasks | every loopback HTTP route |
 | `ctx.fs`, `ctx.subprocess` | explorer, paperspace | remote-aware file access and process execution |
 | `ctx.effect` | all host modules | lifecycle / disposal of routes, workers, watchers |
-| `ctx.slots` → `conversation.session.header.actions` | Makefile panel, open terminal, paper badge | session header buttons (opening the workspace in a file manager comes from DSH's own open-in-app plugin, not this bundle) |
+| `ctx.slots` → `conversation.session.header.actions` | Makefile panel, paper badge | session header buttons (opening the workspace in a file manager or a terminal comes from DSH's own open-in-app plugin, not this bundle) |
 | `ctx.slots` → `sidebar.footer.action` | content width control | sidebar footer button |
 | `ctx.slots` → `conversation.view` | Files, Tasks, Papers tabs | conversation view tabs (orders 20 / 25 / 30) |
 | `ctx.slots` → `conversation.input.dock` | paper-link picker | composer dock control (blank sessions only) |
