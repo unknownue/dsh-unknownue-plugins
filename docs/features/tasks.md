@@ -10,9 +10,9 @@ single integer (`meta.revision`) every 5 seconds and refetches only when it move
 ## Where it lives in the UI
 
 - `applyTasksTab` (`src/client/tasks/index.tsx`) registers the `conversation.view` slot with id
-  `dsh-unknownue-plugins/tasks`, `order: 25` and the `en` label **Tasks** — i.e. **between Files and Papers**,
-  since the file explorer (`src/client/explorer-editor/index.ts`) uses `order: 20` ("Files") and paperspace
-  (`src/client/paperspace/index.tsx`) uses `order: 30` ("Papers").
+  `dsh-unknownue-plugins/tasks`, `order: 25` and the `en` label **Tasks** — i.e. **before Papers**, since
+  paperspace (`src/client/paperspace/index.tsx`) uses `order: 30` ("Papers"). (The removed file explorer
+  used `order: 20` for its `Files` tab.)
 - The header holds the **Board** / **List** mode switch (`role="tablist"`), an **Archived** button (count
   badge once archived cards exist), **Refresh** and **New task**; the footer shows `Revision #<n>`, and
   `.dsh-tasks` is a full-height flex column, so the board fills the view.
@@ -216,7 +216,7 @@ npm test
 node lib/tasks/tasks.test.js
 ```
 
-`npm run build` compiles the host entries (including the test) into `lib/`; `npm test` chains the explorer,
+`npm run build` compiles the host entries (including the test) into `lib/`; `npm test` chains the
 paperspace and tasks suites; `node lib/tasks/tasks.test.js` runs this suite alone. There is no test
 framework: `check()` records every assertion, the run prints `n/m checks passed` and exits non-zero on any
 failure. The suite boots the **real PGlite runtime** in a mock cordis `ctx` under a temporary `DSH_HOME`

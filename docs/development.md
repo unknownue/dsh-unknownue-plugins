@@ -14,25 +14,22 @@ One npm package serves the whole bundle:
   DSH discovers it through `require.resolve(<row name> + "/package.json")`, so the
   row `name` must stay the package name — never a subpath.
 - **Feature flags** — the client entry wires every surface (`slot` registrations
-  for header buttons, the sidebar footer, the three conversation tabs and the
-  settings section), so a build without a given DSH slot degrades to an inert
-  feature instead of failing.
+  for the sidebar footer, the two conversation tabs and the settings section), so
+  a build without a given DSH slot degrades to an inert feature instead of failing.
 
 ```mermaid
 flowchart LR
     subgraph browser["Browser — lib/client.js"]
-        ui["slot registrations<br/>tabs · header buttons · sidebar · settings"]
+        ui["slot registrations<br/>tabs · sidebar footer · settings"]
     end
     subgraph proc["DSH host process"]
-        row["bundle row<br/>lib/index.js"]
+        row["bundle row<br/>lib/index.js (inert)"]
         papers["paperspace row<br/>lib/paperspace/index.js"]
         tasks["tasks row<br/>lib/tasks/index.js"]
-        seams["ctx.webServer · ctx.fs<br/>ctx.subprocess · ctx.effect"]
+        seams["ctx.webServer · ctx.effect"]
     end
-    ui -- "loopback JSON-RPC · REST · SSE" --> row
-    ui --> papers
+    ui -- "REST · SSE" --> papers
     ui --> tasks
-    row --> seams
     papers --> seams
     tasks --> seams
 ```
@@ -41,26 +38,26 @@ flowchart LR
 
 | Path | Contents |
 |---|---|
-| `src/host/index.ts` | bundle host row: config resolution, route table, loopback fence |
-| `src/host/http.ts` | shared HTTP helpers for every loopback route: `json`, `readBody`, `isLoopback`, `isLoopbackHost`, `messageOf` |
-| `src/host/explorer.ts` | file-explorer host half: routes, structural operations, remote routing, fs.watch hub |
-| `src/host/explorer.test.ts` | mock-seam suite for the explorer host half |
+| `src/host/index.ts` | bundle host row: intentionally inert (registers no route); it keeps the package's client bundle mounted |
+| `src/host/http.ts` | shared HTTP helpers for the loopback routes the feature rows register: `json`, `readBody`, `isLoopback`, `isLoopbackHost`, `messageOf` |
 | `src/host/paperspace/**` | paperspace host half: routes, settings, schema, domain, worker, runtime |
 | `src/host/tasks/**` | task-board host half: routes, store, schema, settings |
-| `src/host/types.ts` | locally declared DSH seam types (`ctx.fs`, `ctx.subprocess`, `ctx.webServer`, `ctx.effect`) — minimal honest contracts, no hard `@deepseek-ai/cordis` devDependency |
-| `src/client/index.tsx` | client entry: toolbar buttons, tab wiring, shared CSS injection |
+| `src/client/index.tsx` | client entry: the width control, tab wiring, shared CSS injection |
+| `src/client/plugin-id.ts` | the bundle's client module id, carried by every injected stylesheet as `data-plugin` |
 | `src/client/toolbar/**` | content-width control |
-| `src/client/explorer/**`, `src/client/editor/**` | file tree, editor tabs, markdown preview, themes |
-| `src/client/explorer-editor/index.ts` | registers the Files tab and mounts the `remote.fileManager` service |
 | `src/client/paperspace/**`, `src/client/tasks/**` | the Papers and Tasks tabs, their settings pages and stylesheets |
-| `src/client/i18n.ts` | English/Chinese strings for the explorer editor |
 | `scripts/verify-sidebar.mjs` | headless harness for the paperspace right-Sidebar wiring (development-only, not published) |
+| `scripts/verify-styles.mjs` | headless harness for injected-stylesheet ownership against DSH's real HMR bookkeeping |
+
+The **file explorer** (`src/client/explorer/**`, `src/client/editor/**`,
+`src/client/explorer-editor/**`, `src/client/i18n.ts`, `src/client/styles.css`,
+`src/client/utils/**`, `src/host/explorer.ts`, `src/host/explorer.test.ts`,
+`src/host/types.ts`) no longer exists: the `Files` tab and its host routes were
+removed because DSH ships its own file browsing surface.
 
 Built artifacts live in `lib/` and **are committed** (`lib/client.js`,
-`lib/index.js`, `lib/http.js`, `lib/explorer.js` +
-`lib/explorer.test.js`, `lib/paperspace/index.js` +
-`lib/paperspace/paperspace.test.js`, `lib/tasks/index.js` +
-`lib/tasks/tasks.test.js`). Never edit them by hand; `.gitattributes` pins
+`lib/index.js`, `lib/paperspace/index.js` + `lib/paperspace/paperspace.test.js`,
+`lib/tasks/index.js` + `lib/tasks/tasks.test.js`). Never edit them by hand; `.gitattributes` pins
 `lib/**/*.js` and `src/client/**/*.css` to LF (the `**` covers the nested
 paperspace/tasks files) so a build diff stays byte-stable on every platform —
 a CRLF checkout would embed CRLF in the bundle and invalidate both the
@@ -106,11 +103,14 @@ npm run build:host   # host only    → lib/*.js
   imported as text; a small plugin scopes paperspace's stylesheet under
   `.dsh-paperspace` and rewrites KaTeX font URLs to
   `/dsh-unknownue-plugins/paperspace/static/fonts/`.
-- **Host** — one ESM entry per module, `target: node22`, `packages: "external"`
+- **Host** — one ESM entry per host row, `target: node22`, `packages: "external"`
   (so PGlite's WASM/data assets and postgres.js keep resolving from
-  `node_modules`) and `./*.js` external, which keeps the emitted module graph
-  identical to hand-written files: `lib/index.js` imports `./http.js` and
-  `./explorer.js` at runtime.
+  `node_modules`) and `./*.js` external, which keeps a test entry's
+  `import ... from "./index.js"` pointing at the emitted feature entry — the
+  suite must exercise the very module the loader mounts, not an inlined copy.
+  Otherwise every emitted entry is self-contained: the shared `src/host/http.ts`
+  helpers are inlined into the paperspace and tasks bundles, and the bundle row's
+  `lib/index.js` imports nothing at all.
 
 ## Typecheck
 
@@ -130,10 +130,9 @@ from a `src/host/**/*.test.ts` source file — so **build first**:
 npm run build && npm test
 ```
 
-`npm test` runs, in order: `lib/explorer.test.js`,
-`lib/paperspace/paperspace.test.js`, `lib/tasks/tasks.test.js`. What each suite
-covers is documented with the feature: [File explorer](features/file-explorer.md#tests),
-[Paperspace](features/paperspace.md#tests), [Tasks](features/tasks.md#tests).
+`npm test` runs, in order: `lib/paperspace/paperspace.test.js` (98 checks) and
+`lib/tasks/tasks.test.js` (77 checks). What each suite covers is documented with
+the feature: [Paperspace](features/paperspace.md#tests), [Tasks](features/tasks.md#tests).
 
 ### Verification harness
 
@@ -154,19 +153,54 @@ covers is documented with the feature: [File explorer](features/file-explorer.md
 
   Re-run it after a DSH upgrade: it is the cheapest way to learn that the right
   Sidebar's service names, slot keys or tab-type contract moved.
+- `scripts/verify-styles.mjs` — the injected-stylesheet ownership check
+  (`npm run verify:styles`, after `build:client`). It materializes the built
+  bundle, runs `apply(ctx)`, inventories every `<style>` it injected, and then
+  drives DSH's **real** client module system over a two-entry boot graph to show
+  what happens to a sheet that declares no owner. Read the next section before
+  adding any stylesheet to this bundle.
 - One-off probes do not belong in the repository: keep them in `spike/`, which is
   gitignored (it also holds the pglite experiments). Probes that import
   TypeScript sources directly need the engine's type-stripping Node runtime
   (`node >= 22.19`), and they must resolve their own sample inputs — never a path
   inside a live paperspace data directory.
 
+### Injected stylesheet ownership (read before adding CSS)
+
+DSH's client module system keeps HMR bookkeeping over `<style>` tags **by
+attribute, not by closure**:
+
+| Step | What DSH does |
+|---|---|
+| a bundle materializes | `claimStyles(id)` stamps `data-plugin=<that plugin>` on every tag matching `style:not([data-plugin])` — i.e. it adopts *your* untagged sheets |
+| that plugin is code-reloaded (HMR `rebuilt` frame), pruned from the graph, or gets a new graph revision | `removeOwnedStyles(id)` deletes every `style[data-plugin=<id>]` — including the ones it adopted from you |
+
+So an untagged sheet is not unowned, merely unlabelled: it is adopted by
+whichever plugin materializes next, and **deleted the next time that plugin
+reloads**. This bundle is not reloaded by then, nothing re-injects the CSS, and
+the surface stays unstyled until a page refresh. The observed symptom (content
+width control) was a dialog that suddenly painted inline under its own button,
+because `.dmw-overlay{position:fixed}` was gone; the same mechanism can strip the
+paperspace or tasks sheets.
+
+Every sheet this bundle injects therefore declares `data-plugin={PLUGIN_ID}`
+(`src/client/plugin-id.ts`), and reaches the DOM through one of three refresh-in-
+place helpers (`ensureStyles()` in `index.tsx`, and the per-tab copies in
+`paperspace/index.tsx` / `tasks/index.tsx`). Keep their identity attributes
+(`data-dsh-unknownue-styles`, `data-plugin-css`, `data-width-override`) — they
+are how a later `apply()` finds the tag again; `data-plugin` is only the
+ownership contract. `npm run verify:styles` fails if a sheet ships without it.
+
 ## Adding a feature
 
-1. **Host half** — add `src/host/<feature>.ts` exporting pure helpers plus a
-   `<feature>Dispatch(method, params)` function (the explorer module is the
-   worked example). Register its route in `src/host/index.ts` through the
-   shared `registerRoute` helper so it inherits the loopback fence, the `POST`
-   check, the bounded JSON body and the `{ ok, value | error }` envelope.
+1. **Host half** — add `src/host/<feature>/index.ts` and give it a subpath export
+   (`exports` in `package.json`) plus its own row in `cordis.patch.yml`; the
+   paperspace and tasks rows are the worked examples. Register routes inside
+   `ctx.effect(...)` through `ctx.webServer.register` and reuse the shared
+   `src/host/http.ts` helpers (`isLoopback`, `isLoopbackHost`, `json`,
+   `readBody`, `messageOf`) so the route inherits the loopback fence, the `POST`
+   check, the bounded JSON body and the `{ ok, value | error }` envelope. The
+   bundle row itself (`src/host/index.ts`) registers nothing.
 2. **Browser half** (optional) — add components under `src/client/<feature>/`
    and wire them into `src/client/index.tsx` (or into the tab registration that
    owns them). Register slots inside `ctx.effect(...)` so disposal is automatic.

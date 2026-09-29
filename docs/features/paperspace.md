@@ -17,8 +17,7 @@ host)`); browser half: `src/client/paperspace/`.
 
 - **Papers tab** — registered into `conversation.view` by `applyPaperspaceTab`
   (`src/client/paperspace/index.tsx`) with slot id `dsh-unknownue-plugins/paperspace` and `order:
-  30`; the label comes from the `en` dictionary as **Papers**. It sits **after the Files tab**
-  (`src/client/explorer-editor/index.ts`, `order: 20`) and **after the Tasks tab**
+  30`; the label comes from the `en` dictionary as **Papers**. It sits **after the Tasks tab**
   (`src/client/tasks/index.tsx`, `order: 25`).
 - **Right-Sidebar page tab** — `applyPaperspaceSidebar` (`sidebar-tab.tsx`) registers a tab type
   with kind `paperspace` and id `dsh-unknownue-plugins/paperspace` (`priority: 'builtin'`; DSH
@@ -380,7 +379,7 @@ redirected to a temp directory and long poll intervals so the worker loops stay 
 ```sh
 npm run build                              # bundle src/ -> lib/ (esbuild)
 node lib/paperspace/paperspace.test.js     # the paperspace suite alone
-npm test                                   # explorer + paperspace + tasks suites
+npm test                                   # paperspace + tasks suites
 ```
 
 Source: `src/host/paperspace/paperspace.test.ts`, built to `lib/paperspace/paperspace.test.js`.

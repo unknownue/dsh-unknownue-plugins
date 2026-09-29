@@ -2,7 +2,7 @@
 
 Everything this bundle can be told to do, and where each setting lives. Configuration stacks in three layers:
 
-1. **Bundle patch** — `cordis.patch.yml` ships inside the package and inserts three host rows: `dsh-unknownue-plugins` (file explorer + the client-side width control), `paperspace`, and `tasks`. It applies wherever the bundle is installed (see [Integrations](../integrations.md)).
+1. **Bundle patch** — `cordis.patch.yml` ships inside the package and inserts three host rows: `dsh-unknownue-plugins` (the client-side width control; its host half is inert), `paperspace`, and `tasks`. It applies wherever the bundle is installed (see [Integrations](../integrations.md)).
 2. **Your patch layer** — a profile's `cordis.patch.yml`, and above it `<dsh home>/cordis.patch.yml`, patch those rows by `id`. See [Overriding in a profile](#overriding-in-a-profile).
 3. **Runtime settings and browser preferences** — the paperspace and tasks Settings sections persist to `<dsh home>/<feature>/settings.json`, while pure-UI preferences live in the browser's `localStorage` / `sessionStorage`. See [Paperspace settings file](#paperspace-settings-file) and [Browser-local preferences](#browser-local-preferences).
 
@@ -10,15 +10,11 @@ Everything this bundle can be told to do, and where each setting lives. Configur
 
 ## Bundle row (`dsh-unknownue-plugins`)
 
-| key | default | meaning |
-|-----|---------|---------|
-| `explorer.maxListEntries` | `1000` | Maximum entries returned per directory listing; the rest are cut off and the reply carries `truncated: true`. |
-| `explorer.maxReadBytes` | `1048576` (1 MiB) | Text-read cap. A larger file returns `{ tooLarge: true, size, world }` instead of content. |
-| `explorer.maxRawBytes` | `8388608` (8 MiB) | Cap for binary previews and inline data URLs (`raw`, `readDataUrl`); oversize reads error out. |
-| `explorer.structuralGraceMs` | `8000` (ms) | Grace period handed to `ctx.subprocess.spawn` for remote structural commands (mkdir / touch / mv / cp / rm). |
-| `explorer.stderrTailBytes` | `8192` (bytes) | stderr tail collected from remote structural commands and quoted in error messages. |
-
-Each numeric value is honored only when `Number(value) > 0`; anything else falls back to the default above, so a partially specified `explorer` block is safe. The explorer route this row registers is inventoried in [HTTP API](./http-api.md); the row's other half, the content-width control, is browser-only and takes no configuration.
+**The row takes no configuration.** It carries the client-side content-width
+control and mounts this package's client bundle; its host half registers nothing.
+The `explorer:` block it used to seed (`maxListEntries`, `maxReadBytes`,
+`maxRawBytes`, `structuralGraceMs`, `stderrTailBytes`) went away with the file
+explorer, and a leftover `explorer:` block in a profile patch is simply ignored.
 
 ## Paperspace row and settings
 
@@ -97,12 +93,7 @@ None of these reach the host: they are read and written by the browser half only
 
 | what | storage and key | scope | reset |
 |------|-----------------|-------|-------|
-| Chat/content column width | `localStorage` `dsh-unknownue-plugins:contentWidthPct` | Global per browser. Default 100 (%), range 50–150 in 5% steps, applied as the `--dsh-chat-content-width` CSS variable. | The dialog's "Reset 100%" button writes 100. |
-| File-tree splitter width | `localStorage` `dsh.explorer.treeWidth` | Global per browser. Pixels, default 300, minimum 160. | No UI reset; clear the key (or the whole origin's storage). |
-| Open editor tabs and active file | `localStorage` `dsh-explorer-editor-session` | Global per browser; the snapshot records the root it belongs to and tabs outside the current root are filtered out. Tabs buffer content only up to 262144 characters each. Written 400 ms after the last change. | Dropping the key loses every open tab and unsaved buffer. |
-| Editor color theme and editor font size | `localStorage` `dsh-explorer-editor:editor-theme:v2` | Global per browser. JSON `{background, foreground, fontSize}`; defaults to the light preset at 13 px. | "Reset to default light theme" removes the key. |
-| Markdown source vs preview mode | `localStorage` `dsh-explorer-editor:md-mode:v2` | Global per browser. `source` (default) or `preview`. | Removing the key returns to `source`. |
-| Monaco CDN mirror override | `localStorage` `dsh-explorer-editor:monaco-mirror` | Global per browser, optional. When set, its value is tried before the built-in mirrors. | Remove the key to use only the built-in mirrors. |
+| Chat/content column width | `localStorage` `dsh-unknownue-plugins:contentWidthPct` | Global per browser. Default 100 (%), range 50–150 in 1% steps, applied as the `--dsh-chat-content-width` CSS variable. | The dialog's "Reset 100%" button writes 100. |
 | Paperspace light/dark preference | `localStorage` `dsh-unknownue-plugins/paperspace:theme` | Global per browser. `auto` (default, follows DSH) / `light` / `dark`. | Removing the key returns to `auto`. |
 | Paperspace reader font size | `localStorage` `dsh-unknownue-plugins/paperspace:fontSize` | Global per browser. Pixels, default 16, range 12–26. | Out-of-range values are ignored and the default is used. |
 | Paperspace reader content width | `localStorage` `dsh-unknownue-plugins/paperspace:contentWidthPct` | Global per browser. Percent, default 100, range 40–100. | Same fallback as above. |
@@ -110,7 +101,7 @@ None of these reach the host: they are read and written by the browser half only
 | Translation language and original/translated/bilingual mode | `sessionStorage` `dsh-unknownue-plugins/paperspace:view:<arxivId>` | Per paper, per browser session. Default `{ lang: 'zh-CN', mode: 'original' }`. | Clearing the entry returns the defaults for that paper. |
 | Last paper shown in the right Sidebar's paperspace tab | `sessionStorage` `dsh-unknownue-plugins/paperspace:sidebar-paper` | Per browser session. | Clearing it makes a params-less open start from the library. |
 
-Two pieces of UI state are deliberately **not** persisted: the sidebar tab selection (`workspace` or `files`, module state only, so a page reload returns to `workspace`) and the reader's scroll offset (an in-memory map keyed by surface and arXiv id).
+One piece of UI state is deliberately **not** persisted: the reader's scroll offset (an in-memory map keyed by surface and arXiv id). The removed file explorer used to keep its own keys here (`dsh.explorer.treeWidth`, `dsh-explorer-editor-session`, `dsh-explorer-editor:editor-theme:v2`, `dsh-explorer-editor:md-mode:v2`, `dsh-explorer-editor:monaco-mirror`); they are inert leftovers and can be cleared.
 
 ## Overriding in a profile
 
@@ -118,15 +109,6 @@ Patch layers are applied in order — bundle patches, then the profile's `cordis
 
 ```yaml
 # <profile>/cordis.patch.yml (or <dsh home>/cordis.patch.yml, which outranks it)
-- id: dsh-unknownue-plugins
-  config:
-    explorer:
-      maxListEntries: 2000
-      maxReadBytes: 1048576
-      maxRawBytes: 8388608
-      structuralGraceMs: 8000
-      stderrTailBytes: 8192
-
 - id: paperspace
   config:
     # `config` replaces the seeded object wholesale — restate what you keep.

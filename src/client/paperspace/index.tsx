@@ -9,6 +9,7 @@ import UnknownueSettingsPage from './settings-page';
 import { PaperBadge } from './paper-badge';
 import { PaperLinkControl } from './paper-link-control';
 import { applyPaperspaceSidebar } from './sidebar-tab';
+import { PLUGIN_ID } from '../plugin-id';
 import stylesCss from './styles.css';
 import katexCss from 'katex/dist/katex.min.css';
 
@@ -137,6 +138,10 @@ function ensureStyles(): void {
   const inject = (tagId: string, css: string) => {
     const existing = document.querySelector(`style[data-plugin-css="${tagId}"]`);
     const tag = existing !== null ? existing : document.createElement('style');
+    // `data-plugin` is the HMR ownership contract (see ../plugin-id.ts): an
+    // untagged sheet is adopted by whichever plugin materializes next and then
+    // deleted on that plugin's reload, leaving this tab unstyled.
+    tag.setAttribute('data-plugin', PLUGIN_ID);
     tag.setAttribute('data-plugin-css', tagId);
     tag.textContent = css;
     if (existing === null) document.head.appendChild(tag);

@@ -1,6 +1,6 @@
 # HTTP API
 
-Every route in this bundle is registered on DSH's shared web server through `ctx.webServer.register({ kind: 'exact' | 'prefix', path, handler })` and is fenced to loopback requests; the bundle's own browser half is the only intended client. Paths follow `/dsh-unknownue-plugins/<feature>/...`, and the bundle row also owns the toolbar/workspace routes.
+Every route in this bundle is registered on DSH's shared web server through `ctx.webServer.register({ kind: 'exact' | 'prefix', path, handler })` and is fenced to loopback requests; the bundle's own browser half is the only intended client. Paths follow `/dsh-unknownue-plugins/<feature>/...`, and only the **paperspace** and **tasks** rows register any: the bundle row itself (`dsh-unknownue-plugins`) registers nothing since the file explorer was removed.
 
 The fence is the same check on every JSON route (the only exception is the paperspace static font route, which serves public assets and has no fence):
 
@@ -10,69 +10,33 @@ if (!isLoopback(req.socket.remoteAddress) || !isLoopbackHost(req.headers.host)) 
 }
 ```
 
-`isLoopback(address)` accepts `127.0.0.1`, `::1`, and `::ffff:127.0.0.1`; `isLoopbackHost(host)` strips the port (bracket-aware for IPv6) and lowercases the hostname, accepting `localhost`, `127.0.0.1`, `::1`, `::ffff:127.0.0.1`. Paperspace and tasks answer `403 { code: 'FORBIDDEN', message: 'loopback-only' }`; the bundle-row routes answer `403 { ok: false, error: 'loopback-only' }`.
+`isLoopback(address)` accepts `127.0.0.1`, `::1`, and `::ffff:127.0.0.1`; `isLoopbackHost(host)` strips the port (bracket-aware for IPv6) and lowercases the hostname, accepting `localhost`, `127.0.0.1`, `::1`, `::ffff:127.0.0.1`. Every fenced route answers `403 { code: 'FORBIDDEN', message: 'loopback-only' }`.
 
-Two payload conventions coexist:
-
-- **Bundle-row routes** (`explorer`) are JSON-RPC: body `{ method, params }`, reply `{ ok: true, value }` or `{ ok: false, error }` — both with HTTP 200. Parse/shape problems are 400, a non-POST request is 405.
-- **Paperspace and tasks** are REST: JSON bodies and `{ code, message }` errors.
+Every route is **REST**: JSON bodies, `{ code, message }` errors.
 
 ## Toolbar and workspace actions
 
-The bundle row registers **no toolbar route** any more. Three surfaces used to live here and were removed,
-because DSH owns them:
+The bundle row registers **no route at all**. Surfaces that used to live there were
+removed, because DSH owns them:
 
-- **Opening a directory** — `/dsh-unknownue-plugins/open/api` plus the host helper `platform.openDirectory`
-  and the explorer's `reveal` method that reached it. DSH's open-in-app plugin
-  (`@deepseek-ai/dsh-host-open-in-app` + `@deepseek-ai/dsh-client-ui-open-in-app`, routes
-  `/open-in-app/apps`, `/open-in-app/icon`, `/open-in-app/open`) puts a session-header **Open In…** button on
-  the session workspace directory whose catalog covers editors, Git GUIs, terminal emulators and the file
-  manager.
+- **Opening a directory** — `/dsh-unknownue-plugins/open/api` plus the host helper `platform.openDirectory`.
+  DSH's open-in-app plugin (`@deepseek-ai/dsh-host-open-in-app` +
+  `@deepseek-ai/dsh-client-ui-open-in-app`, routes `/open-in-app/apps`, `/open-in-app/icon`,
+  `/open-in-app/open`) puts a session-header **Open In…** button on the session workspace directory
+  whose catalog covers editors, Git GUIs, terminal emulators and the file manager.
 - **Opening a terminal window** — `/dsh-unknownue-plugins/terminal/api` plus `platform.openTerminal`; the
   in-GUI terminal is DSH's `dsh-terminal` + `dsh-client-ui-sidebar-terminal`, and the open-in-app catalog
   lists the native emulators.
 - **Listing Makefile targets** — `/dsh-unknownue-plugins/makefile/api` (`listTargets`, `parseMakefile`) and
   the panel behind it; the session header is left to DSH.
+- **The file explorer** — `/dsh-unknownue-plugins/explorer/api` (JSON-RPC: `list`, `read`, `write`, the
+  structural file operations) and the `/dsh-unknownue-plugins/explorer/watch` SSE channel, with the
+  `Files` conversation tab and the whole editor UI in front of them. DSH ships its own file browsing
+  surface, so the tab, the client modules and both routes are gone.
 
-No code path in this bundle launches an OS program on the workspace any more. What remains of the row is
-the file explorer (below) and the browser-only content-width control. See
+No code path in this bundle launches an OS program on the workspace any more, and the bundle row serves
+nothing over HTTP. What remains of the row is the browser-only content-width control. See
 [Toolbar actions](../features/toolbar-actions.md).
-
-## File explorer
-
-One POST endpoint carries a JSON-RPC dispatch; one GET endpoint streams watch events.
-
-`POST /dsh-unknownue-plugins/explorer/api` — body `{ method, params }`. Every method takes `cwd` as the routing basis (the session cwd, passed verbatim), and the path fields below are resolved against it:
-
-| method | params | result |
-|--------|--------|--------|
-| `list` | `cwd`, `path` | `{ world, path, entries: [{ name, type, size, path }], truncated }` (`size` may be `null`) |
-| `read` | `cwd`, `path` | `{ content, size, world }`, or `{ tooLarge: true, size, world }` past `explorer.maxReadBytes` |
-| `write` | `cwd`, `path`, `content` | `{ ok, world, path }` |
-| `raw` | `cwd`, `path` | `{ name, type (MIME), size, base64, world }`; oversize files error with `too-large: …` |
-| `readDataUrl` | `cwd`, `path` | `{ path, mime, dataUrl, world }` for inline markdown images |
-| `statPath` | `cwd`, `path` | `{ path, type, size?, world }` |
-| `resolvePath` | `cwd`, `path` | `{ path, world }` |
-| `createFile` | `cwd`, `path` | `{ path, world }`; fails when the file already exists |
-| `createDirectory` | `cwd`, `path` | `{ path, world }`; recursive and idempotent |
-| `renamePath` | `cwd`, `from`, `to` | `{ from, to, world }`; cross-world moves are rejected |
-| `copyPath` | `cwd`, `from`, `to` | `{ from, to, world }`; fails when the destination exists |
-| `deletePath` | `cwd`, `path` | `{ path, world }`; a file or an empty directory only |
-| `mkdir` | `cwd`, `path`, `name` | `{ ok, world, path }` (parent + name form) |
-| `touch` | `cwd`, `path`, `name` | `{ ok, world, path }` |
-| `rename` | `cwd`, `path`, `name` | `{ ok, world, path }` (renames in place) |
-| `delete` | `cwd`, `path` | `{ ok, world, path }`; recursive |
-| `setRoot` | `cwd`, `path` | `{ path, world }`; pins the watch root (remote worlds clear it) |
-
-`world` is `"local"` or `"remote"` (decided by the resolved target key: `ssh://` means remote). `name` must be a single path segment — separators are rejected.
-
-`GET /dsh-unknownue-plugins/explorer/watch` — server-sent events for the pinned local root; any other method answers `405` with an `allow: GET` header. The stream opens with `retry: 2000`, is registered as a prefix route, and sends `content-type: text/event-stream`, `cache-control: no-cache`, `connection: keep-alive`, and `x-accel-buffering: no`. Events are debounced by 150 ms into one frame per batch:
-
-```text
-data: {"dirs":["<changed directory>"],"rootChanged":false}
-```
-
-`dirs` lists the changed directories of the batch; `rootChanged` is currently always `false`. Watch is a recursive `fs.watch`, so remote roots get no events (the tree falls back to manual refresh) and an unavailable watch is logged rather than fatal. See [File explorer](../features/file-explorer.md).
 
 ## Paperspace
 
@@ -103,7 +67,7 @@ All of these live under `/dsh-unknownue-plugins/paperspace/`, with `api` routes 
 
 The API key persisted with a job never leaves the host: `provider` in job payloads is reduced to `{ provider, model }` or `{ baseUrl, model }`.
 
-**Streaming.** This feature registers **no SSE endpoint**. There is no `chat/stream` route: `src/host/paperspace/runtime/` still carries the agent runtime and the SSE codec, but no route consumes them — grounded chat now runs through DSH sessions, with the `search_paper` / `read_section` tools and a system-prompt section instead, and the `paper.chats` / `paper.chat_messages` tables stay unused in the schema. Apart from the asset byte stream and the font files above, the bundle's only streaming route is the file-explorer watch channel. See [Paperspace](../features/paperspace.md).
+**Streaming.** This feature registers **no SSE endpoint**. There is no `chat/stream` route: `src/host/paperspace/runtime/` still carries the agent runtime and the SSE codec, but no route consumes them — grounded chat now runs through DSH sessions, with the `search_paper` / `read_section` tools and a system-prompt section instead, and the `paper.chats` / `paper.chat_messages` tables stay unused in the schema. Apart from the asset byte stream and the font files above, the bundle registers no streaming route at all — the file-explorer watch channel went away with the explorer. See [Paperspace](../features/paperspace.md).
 
 ## Tasks
 
@@ -126,12 +90,8 @@ Mounted as one prefix route under `/dsh-unknownue-plugins/tasks/api`:
 
 ## Conventions and limits
 
-- **Body parsing.** All routes share one `readBody` helper: the body must be a JSON object (arrays, `null`, and scalars are rejected) and is capped at 1 MiB (`MAX_BODY_BYTES = 1 << 20`, failure message `request body is too large`). Bundle-row routes report a parse or size failure as 400; the paperspace and tasks wrappers only special-case zod failures, so a malformed body there surfaces as 500 `INTERNAL_ERROR`.
-- **Status codes.** Bundle-row routes: 403 non-loopback, 405 non-POST, 400 unparseable body or non-object `params`, then 200 with `{ ok: false, error }` for anything the dispatcher throws (unknown method, missing file, permission rejection). Paperspace/tasks: 400 `VALIDATION_ERROR` for zod failures, 404 `NOT_FOUND`/`*_NOT_FOUND`, 405 `METHOD_NOT_ALLOWED`, 409 for state conflicts, 423 `PAPERSPACE_NOT_CONFIGURED`, 500 `INTERNAL_ERROR` — and nothing is written once headers are sent, so streaming handlers keep their own status.
+- **Body parsing.** All routes share one `readBody` helper: the body must be a JSON object (arrays, `null`, and scalars are rejected) and is capped at 1 MiB (`MAX_BODY_BYTES = 1 << 20`, failure message `request body is too large`). The paperspace and tasks wrappers only special-case zod failures, so a malformed body surfaces as 500 `INTERNAL_ERROR`.
+- **Status codes.** Paperspace/tasks: 403 non-loopback, 400 `VALIDATION_ERROR` for zod failures, 404 `NOT_FOUND`/`*_NOT_FOUND`, 405 `METHOD_NOT_ALLOWED`, 409 for state conflicts, 423 `PAPERSPACE_NOT_CONFIGURED`, 500 `INTERNAL_ERROR` — and nothing is written once headers are sent, so streaming handlers keep their own status.
 - **Task error codes.** `TASK_NOT_FOUND` maps to 404 and `TARGET_NOT_IN_COLUMN` to 400; any other thrown code is surfaced with status 500.
 - **Response headers.** The shared `json()` helper always sends `content-type: application/json; charset=utf-8`, `cache-control: no-store`, and `x-content-type-options: nosniff`.
-- **Paths are passed verbatim.** The explorer treats `cwd` as the routing basis for every call and resolves `path` against it; the mixed `ctx.fs` provider picks the local or remote world from that cwd. Remote spellings are `ssh://<id>/<path>` and the local placeholder trees `dsw-routes/<id>/...` and the legacy `dsh-ssh-routes/<id>/...`, which are normalized to the plain remote posix path. Cross-world `renamePath` / `copyPath` is rejected with `cross-world operation is not supported`.
-- **Seams.** The explorer needs `ctx.fs` (the host provider or dsh-workspace-enhancement's mixed provider; a session-scoped fs is preferred when a live agent's header cwd matches) and needs `ctx.subprocess` for structural operations in a remote world. A missing seam produces an honest error rather than a silent fallback.
-- **Remote structural limits.** Spawned commands get `graceMs` = `explorer.structuralGraceMs` (default 8000 ms), stdout capped at 65536 bytes and stderr at `explorer.stderrTailBytes` (default 8192); argv items are shell-quoted by the remote runtime. `mv -T` is retried without the flag when the remote host rejects it as GNU-only.
-- **Size caps.** `read` is capped by `explorer.maxReadBytes` and `raw` / `readDataUrl` by `explorer.maxRawBytes`; see [Configuration](./configuration.md) for the defaults.
-- **No request timeouts of its own.** The bundle sets no handler deadline; only the subprocess grace period above bounds a request. Paperspace's `ingestTimeoutMs` / `translateTimeoutMs` belong to the background worker loops, not to HTTP calls.
+- **No request timeouts of its own.** The bundle sets no handler deadline; paperspace's `ingestTimeoutMs` / `translateTimeoutMs` belong to the background worker loops, not to HTTP calls.

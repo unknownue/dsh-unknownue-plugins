@@ -7,20 +7,16 @@
 # Install: dsh plugin --profile web add github:unknownue/dsh-unknownue-plugins
 - insert:
     # ──────────────────────────────────────────────────────────────────────
-    # Feature #1: the bundle row itself — remote-aware file explorer (host API
-    # + browser UI) and the client-side content-width control. The Makefile
-    # panel was removed (DSH owns the session header's OS actions; this row now
-    # carries no toolbar route).
+    # Feature #1: the bundle row itself — the client-side content-width
+    # control, plus this package's client bundle as a whole. The row registers
+    # no HTTP route: the remote-aware file explorer (host API + browser `Files`
+    # tab) was removed because DSH ships its own file browsing surface, and the
+    # Makefile panel was removed earlier (DSH owns the session header's OS
+    # actions). The host half of this row is intentionally inert; the feature
+    # rows below carry the remaining host work.
     # ──────────────────────────────────────────────────────────────────────
     - id: dsh-unknownue-plugins
       name: 'dsh-unknownue-plugins'
-      config:
-        explorer:
-          maxListEntries: 1000
-          maxReadBytes: 1048576
-          maxRawBytes: 8388608
-          structuralGraceMs: 8000
-          stderrTailBytes: 8192
 
 - insert:
     # ──────────────────────────────────────────────────────────────────────

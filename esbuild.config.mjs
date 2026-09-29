@@ -161,18 +161,15 @@ if (want("client")) {
 }
 
 // ── host half ───────────────────────────────────────────────────────────────
-// One ESM entry per feature module, emitted to lib/ alongside the client
-// bundle. Imports between entry points stay external (index.js imports
-// http.js / explorer.js exactly as the hand-written files did), so the
-// runtime module graph is unchanged.
+// One ESM entry per host row of the bundle, emitted to lib/ alongside the
+// client bundle: the package row itself (index.ts — inert since the file
+// explorer was removed) and the two feature rows (paperspace, tasks), each
+// self-contained.
 
 if (want("host")) {
   await build({
     entryPoints: [
       "src/host/index.ts",
-      "src/host/http.ts",
-      "src/host/explorer.ts",
-      "src/host/explorer.test.ts",
       "src/host/paperspace/index.ts",
       "src/host/paperspace/paperspace.test.ts",
       "src/host/tasks/index.ts",
@@ -186,14 +183,13 @@ if (want("host")) {
     // npm packages stay external so their own runtime asset resolution
     // (PGlite WASM/data files, postgres.js) keeps working at runtime.
     packages: "external",
-    // Keep imports between feature modules as-is (index.js imports
-    // ./http.js / ./explorer.js at runtime, exactly like the hand-written
-    // files did), instead of inlining everything into the entry that happens to
-    // import it.
+    // A test entry imports its feature's emitted entry (`./index.js`), so
+    // top-level relative imports stay external: the suite must exercise the
+    // very module the loader mounts, not an inlined copy of it.
     external: ["./*.js"],
     minify: false,
     sourcemap: false,
   });
 
-  console.log("✓ Built host modules (index, http, explorer, explorer.test, paperspace, paperspace.test, tasks, tasks.test)");
+  console.log("✓ Built host modules (index, paperspace, paperspace.test, tasks, tasks.test)");
 }

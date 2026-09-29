@@ -31,16 +31,10 @@ dsh plugin --profile web add github:unknownue/dsh-workspace-enhancement   # fork
 
 How this bundle depends on it:
 
-- The **file explorer** and **paperspace** route every filesystem and process
-  operation through `ctx.fs` / `ctx.subprocess`, so they follow the mixed
-  local/remote provider automatically. Paths are passed verbatim: a remote
-  session's cwd arrives as `ssh://<id>/<path>` (or the `dsw-routes` placeholder
-  tree) and is routed by that plugin.
-- The per-workspace **permission gates apply unchanged**: `fs: read-only` makes
-  the explorer reject writes, `exec: off` makes it reject structural operations
-  (mkdir / rename / delete), which need a remote shell.
-- The explorer's own test suite exercises exactly this contract (with fake
-  seams) — see [File explorer](features/file-explorer.md#tests).
+- **Paperspace** is the only remaining feature that touches the filesystem: it
+  materializes a paper's markdown into the session workspace through
+  `node:fs`. The mixed local/remote `ctx.fs` / `ctx.subprocess` providers are no
+  longer consumed by this bundle — the file explorer that used them was removed.
 - Its Settings UI and prompt injection are independent of this bundle; this
   bundle only relies on its `settings.section` slot pattern being the same
   convention.
@@ -86,15 +80,13 @@ crash.
 
 | Seam | Used by | Purpose |
 |---|---|---|
-| `ctx.webServer.register` (exact-path routes) | host row, explorer, paperspace, tasks | every loopback HTTP route |
-| `ctx.fs`, `ctx.subprocess` | explorer, paperspace | remote-aware file access and process execution |
+| `ctx.webServer.register` (exact-path routes) | paperspace, tasks | every loopback HTTP route |
 | `ctx.effect` | all host modules | lifecycle / disposal of routes, workers, watchers |
 | `ctx.slots` → `conversation.session.header.actions` | paper badge | session header badge (this bundle registers no other header action: opening the workspace in a file manager or a terminal comes from DSH's own open-in-app plugin) |
 | `ctx.slots` → `sidebar.footer.action` | content width control | sidebar footer button |
-| `ctx.slots` → `conversation.view` | Files, Tasks, Papers tabs | conversation view tabs (orders 20 / 25 / 30) |
+| `ctx.slots` → `conversation.view` | Tasks, Papers tabs | conversation view tabs (orders 25 / 30) |
 | `ctx.slots` → `conversation.input.dock` | paper-link picker | composer dock control (blank sessions only) |
 | `ctx.slots` → `settings.section` | UnPlugin settings page | DSH Settings section hosting all feature options |
-| `ctx.slots` → `sidebar.workspaces.tabs` | explorer editor | tracks whether DSH provides its own tabs slot |
 | `ctx.inject(['slots', 'sidebarRightTabs'])`, `sidebar.right.pane.tab`, `sidebar.right.pane.tab.title`, `ctx.inject(['sidebarRight'])` | paperspace sidebar | right-Sidebar page tab (inert without the column) |
 | `ctx.locale.register` / `bind` | all UI features | English + Chinese dictionaries |
 | `ctx.sessions`, `ctx.workspaces` | toolbar actions, paperspace | session cwd resolution, native paper sessions |

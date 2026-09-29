@@ -4,12 +4,13 @@
  */
 
 import React, { useState } from "react";
+import { PLUGIN_ID } from "../plugin-id";
 
 const WIDTH_STORAGE_KEY = "dsh-unknownue-plugins:contentWidthPct";
 const WIDTH_DEFAULT_PCT = 100;
 const WIDTH_MIN_PCT = 50;
 const WIDTH_MAX_PCT = 150;
-const WIDTH_STEP_PCT = 5;
+const WIDTH_STEP_PCT = 1;
 
 function clampWidth(value: unknown): number {
   const n = Math.round(Number(value));
@@ -31,7 +32,7 @@ let widthStyleEl: HTMLStyleElement | null = null;
 export function applyWidth(pct: number): void {
   if (widthStyleEl === null) {
     widthStyleEl = document.createElement("style");
-    widthStyleEl.setAttribute("data-plugin", "dsh-unknownue-plugins");
+    widthStyleEl.setAttribute("data-plugin", PLUGIN_ID);
     widthStyleEl.setAttribute("data-width-override", "");
     document.head.appendChild(widthStyleEl);
   }

@@ -9,8 +9,7 @@ session header was **removed on purpose**:
   routes `/open-in-app/apps`, `/open-in-app/icon`, `/open-in-app/open`), whose session-header
   **Open In…** button opens the workspace directory in a locally installed application with an app
   catalog and icons. Removed here: the header button, its route
-  (`/dsh-unknownue-plugins/open/api`), the `openDirectory` host helper and the file explorer's
-  `reveal` method that reached it.
+  (`/dsh-unknownue-plugins/open/api`) and the `openDirectory` host helper.
 - **Open terminal at workspace** — the header button that spawned a native terminal window
   (`/dsh-unknownue-plugins/terminal/api`, `openTerminal`; `cmd.exe` / `osascript` /
   `x-terminal-emulator`). DSH owns both halves: `dsh-terminal` + `dsh-client-ui-sidebar-terminal`
@@ -22,19 +21,23 @@ session header was **removed on purpose**:
   panel rather than a DSH gap, and it never worked as shipped: the browser half posted method
   `list` with `{ cwd }` while the host dispatched `listTargets` and read `{ workdir }`, so every
   call came back `unknown method "list"`. Removed: the button, the panel component, the parser,
-  the route and the row's `makefile` key. Read a Makefile through the explorer's file tree or the
-  agent's tooling instead.
+  the route and the row's `makefile` key. Read a Makefile through DSH's own file browsing surface or
+  the agent's tooling instead.
+- **The file explorer (`Files` tab)** — the `conversation.view` tab (order 20) with the tree + editor
+  split, its `/dsh-unknownue-plugins/explorer/api` route and its `/dsh-unknownue-plugins/explorer/watch`
+  SSE channel, plus the whole `src/client/explorer/**` + `src/client/editor/**` tree. DSH ships its own
+  file browsing surface, so the tab, the client modules and both host routes are gone; see
+  [HTTP API](../reference/http-api.md#toolbar-and-workspace-actions) for the full removed list.
 
-The bundle's host row (`src/host/index.ts`) therefore registers a single route, the file explorer's
-`/dsh-unknownue-plugins/explorer/api`, plus the explorer's watch channel; the browser half
-registers the width control and the three view tabs. Nothing in this bundle launches an OS program
-on the workspace any more.
+The bundle's host row (`src/host/index.ts`) therefore registers **no route at all** — it exists as the
+bundle row whose client bundle carries the width control and the two remaining view tabs
+(`Tasks`, `Papers`). Nothing in this bundle launches an OS program on the workspace any more.
 
 ## Content width
 
 - **Surface** — the sidebar footer action (`sidebar.footer.action` slot,
   id `dsh-unknownue-plugins/width`).
-- **Behaviour** — a dialog with a slider (50 %–150 %, 5 % steps, default 100 %)
+- **Behaviour** — a dialog with a slider (50 %–150 %, 1 % steps, default 100 %)
   and a `Reset 100%` button that rewrites the chat/content column width.
 - **Mechanics** — the value is written to `localStorage` under
   `dsh-unknownue-plugins:contentWidthPct` and applied by injecting a single
@@ -42,6 +45,14 @@ on the workspace any more.
   `*{--dsh-chat-content-width:<pct>% !important}`. It is re-applied at plugin
   startup, so the width survives reloads; a storage failure (private mode) is
   ignored and the width still applies for the session.
+- **Styling** — the button and the dialog come from the bundle's shared sheet
+  (`ensureStyles()` in `src/client/index.tsx`, the `.dmw-*` rules). That sheet
+  carries `data-plugin` like every other sheet this bundle injects, because DSH's
+  HMR bookkeeping adopts unlabelled tags for the next plugin that materializes
+  and deletes them when *that* plugin reloads — without the marker the dialog
+  degrades to unstyled markup painted inline under its button, hours after the
+  page was loaded. See
+  [Injected stylesheet ownership](../development.md#injected-stylesheet-ownership-read-before-adding-css).
 - **No host involvement** — this is the feature formerly shipped as the separate
   `dsh-ui-width` plugin.
 
@@ -49,8 +60,16 @@ on the workspace any more.
 
 - The width control carries fixed English `title` / `aria-label` text and keeps its value in
   browser storage, so it is per browser profile and does not follow the UI language.
+- Loss of the shared sheet is not self-healing: the plugin is not reloaded when the
+  sheet is deleted, so only a page refresh (or an HMR reload of this bundle)
+  brings the dialog chrome back.
 - The removed Makefile panel is documented here only as history: nothing in the bundle reads a
   Makefile or runs `make` any more.
+- The removed file explorer is history too: with it went its browser-local preferences
+  (`dsh.explorer.treeWidth`, `dsh-explorer-editor-session`,
+  `dsh-explorer-editor:editor-theme:v2`, `dsh-explorer-editor:md-mode:v2`,
+  `dsh-explorer-editor:monaco-mirror`). Those keys are inert leftovers in an existing
+  browser profile and can be cleared.
 
 ## Related
 

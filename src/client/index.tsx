@@ -1,7 +1,15 @@
 /**
  * dsh-unknownue-plugins client entry point.
  *
- * Registers the content-width control and the file explorer editor view.
+ * Registers the content-width control and the conversation view tabs this
+ * bundle still owns (paperspace, tasks).
+ *
+ * The **file explorer** (`Files` tab: tree, editor tabs, markdown preview,
+ * file operations) was removed together with its host half
+ * (`/dsh-unknownue-plugins/explorer/api` + the explorer watch channel): DSH
+ * ships its own file browsing surface, so the bundle carries neither the tab
+ * nor the route.
+ *
  * Handing the session workspace directory to an OS program is left to DSH
  * itself: `@deepseek-ai/dsh-client-ui-open-in-app` covers the file manager and
  * the terminal emulators ("Open In…"), and `dsh-client-ui-sidebar-terminal`
@@ -10,12 +18,9 @@
 
 import React from "react";
 import { WidthControl, readWidthPct, applyWidth, setWidthPct } from "./toolbar/WidthControl";
-import { applyExplorerEditor } from "./explorer-editor";
 import { applyPaperspaceTab } from "./paperspace/index";
 import { applyTasksTab } from "./tasks/index";
-
-// Inject explorer editor CSS
-import stylesCss from "./styles.css";
+import { PLUGIN_ID } from "./plugin-id";
 
 // ── idempotent stylesheet ─────────────────────────────────────────────
 
@@ -34,35 +39,18 @@ function ensureStyles(): void {
     ".dmw-slider{width:100%;accent-color:var(--dsw-alias-state-business-primary);}",
     ".dmw-reset{height:30px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;font-size:12px;}",
     ".dmw-reset:hover{background:var(--dsw-alias-interactive-bg-hover);}",
-    ".dshfx-split{display:flex;height:100%;min-height:0;overflow:hidden;position:relative;}",
-    ".dshfx-tree-pane{flex:none;min-width:0;overflow:hidden;border-right:1px solid var(--dsw-alias-border-l2);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);}",
-    ".dshfx-resizer{flex:none;width:6px;margin-left:-1px;cursor:col-resize;touch-action:none;position:relative;z-index:1;background:transparent;}",
-    ".dshfx-resizer::after{content:\"\";position:absolute;top:0;bottom:0;left:2px;width:1px;background:var(--dsw-alias-border-l2);transition:background var(--ds-transition-duration-fast,120ms) ease;}",
-    ".dshfx-resizer:hover::after,.dshfx-resizer[data-dragging]::after{background:var(--dsw-alias-state-business-primary);width:2px;left:2px;}",
-    ".dshfx-editor-pane{flex:1;min-width:0;overflow:hidden;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);}",
-    // The composer (input box) belongs to the chat view — hide it while the
-    // 文件 tab owns the conversation view (same CSS approach paperspace uses;
-    // the explorer wrapper already subtracts the composer seat height, so
-    // with display:none it fills the whole viewport automatically).
-    "[data-phase='active']:has(.dshfx-split) [data-composer-seat],",
-    "[class*='scrollBody']:has(.dshfx-split) [class*='composerSeat']{display:none !important;}",
   ].join("\n");
   // Refresh an existing tag in place
   const existing = document.querySelector("style[data-dsh-unknownue-styles]");
   const style = existing !== null ? existing : document.createElement("style");
+  // Ownership marker: without it DSH's HMR bookkeeping adopts this sheet for
+  // whichever plugin materializes next and deletes it when THAT plugin reloads
+  // (see plugin-id.ts), which is what used to strip every .dmw-* rule off a
+  // long-lived page.
+  style.setAttribute("data-plugin", PLUGIN_ID);
   style.setAttribute("data-dsh-unknownue-styles", "");
   style.textContent = css;
   if (existing === null) document.head.appendChild(style);
-
-  // Inject explorer editor CSS
-  const CSS_TAG = "dsh-explorer-editor/styles.css";
-  if (document.querySelector(`style[data-plugin-css="${CSS_TAG}"]`) === null) {
-    const tag = document.createElement("style");
-    tag.dataset.plugin = "dsh-explorer-editor";
-    tag.dataset.pluginCss = CSS_TAG;
-    tag.textContent = stylesCss;
-    document.head.appendChild(tag);
-  }
 }
 
 // ── plugin contract ───────────────────────────────────────────────────
@@ -85,7 +73,6 @@ function apply(ctx: any): void {
     "dsh-unknownue-plugins: content width control",
   );
 
-  applyExplorerEditor(ctx);
   applyPaperspaceTab(ctx);
   applyTasksTab(ctx);
 }
