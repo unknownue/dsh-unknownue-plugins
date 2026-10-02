@@ -191,6 +191,21 @@ place helpers (`ensureStyles()` in `index.tsx`, and the per-tab copies in
 are how a later `apply()` finds the tag again; `data-plugin` is only the
 ownership contract. `npm run verify:styles` fails if a sheet ships without it.
 
+### Modal mask blur
+
+Both masks in this bundle (`.tk-mask` in `tasks/styles.css`, `.dmw-mask` in
+`client/index.tsx`) pin `backdrop-filter: blur(2px)` directly. They used to take
+the blur from DSH's `--dsw-mask-blur`, which is why the blur disappeared without
+any change in this repository:
+
+| DSH line | `--dsw-mask-blur` | Result |
+|---|---|---|
+| 0.1.x | `blur(2px)` | mask tinted **and** blurred |
+| 0.2.x | `none` | mask tinted only, backdrop sharp |
+
+Neither mask reads the token any more. DSH's own `Modal` inherits the same
+`none`, so the blur deliberately exceeds the stock dialog look.
+
 ## Adding a feature
 
 1. **Host half** — add `src/host/<feature>/index.ts` and give it a subpath export

@@ -333,7 +333,11 @@
   position: absolute;
   inset: 0;
   background: var(--dsw-alias-bg-mask-1);
-  backdrop-filter: var(--dsw-mask-blur);
+  /* Hard-coded on purpose: DSH 0.2.x redefines --dsw-mask-blur as `none`, so
+     this mask kept only its 24% (light) / 50% (dark) tint and the backdrop
+     stopped being blurred. 0.1.x shipped that token as blur(2px) — the value
+     pinned here. */
+  backdrop-filter: blur(2px);
 }
 
 .dsh-tasks .tk-dialog {
