@@ -2,7 +2,7 @@
 
 Personal [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) plugin bundle
 for **unknownue**: one npm package whose bundle patch mounts a set of personal
-plugins in a single install — a content-width control, a personal task board,
+plugins in a single install — a content-width setting, a personal task board,
 and an in-process academic-paper reader.
 
 Everything the browser half needs goes through loopback-fenced HTTP routes on
@@ -13,7 +13,8 @@ instead of failing.
 
 | Feature | Where it appears | Docs |
 | --- | --- | --- |
-| **Content width** — 50–150 % slider in 1 % steps for the chat/content column, remembered per browser | sidebar footer button | [Toolbar actions](docs/features/toolbar-actions.md) |
+| **Content width** — 50–150 % slider in 1 % steps for the chat/content column, remembered per browser | UnPlugin settings (界面显示 block) | [Toolbar actions](docs/features/toolbar-actions.md) |
+| **Hide New Session button** — hides DSH's sidebar/titlebar “New session” button for a quieter sidebar (shortcuts and session creation untouched), remembered per browser | UnPlugin settings (界面显示 block) | [Toolbar actions](docs/features/toolbar-actions.md#hide-new-session-button) |
 | **Paperspace** — arXiv library, reader (math, TOC, figure lightbox) and AI translation, running inside the DSH process: embedded PGlite, local object store, no Docker and no separate worker | `Papers` conversation tab, right-Sidebar page tab, session header badge, composer paper picker, UnPlugin settings | [Paperspace](docs/features/paperspace.md) |
 | **Tasks** — personal kanban + list board with tags, subtasks and optional due dates, maintained by hand (no agent surface) | `Tasks` conversation tab, UnPlugin settings | [Tasks](docs/features/tasks.md) |
 
@@ -25,7 +26,7 @@ The bundle patch inserts three rows, all served by this one package:
 
 | Row id | Plugin row | Documentation |
 | --- | --- | --- |
-| `dsh-unknownue-plugins` | the bundle row: the content-width control (its host half is inert) | this file |
+| `dsh-unknownue-plugins` | the bundle row: shared stylesheet + startup application of the browser-local UI preferences (content width, hide New Session button); its host half is inert | this file |
 | `paperspace` | `dsh-unknownue-plugins/paperspace` subpath | [Paperspace](docs/features/paperspace.md) |
 | `tasks` | `dsh-unknownue-plugins/tasks` subpath | [Tasks](docs/features/tasks.md) |
 
@@ -79,7 +80,7 @@ Three layers, all documented in
 
 | Document | Covers |
 | --- | --- |
-| [Toolbar actions](docs/features/toolbar-actions.md) | the content-width control, and the header actions DSH owns instead |
+| [Toolbar actions](docs/features/toolbar-actions.md) | the content-width setting (in UnPlugin), and the header actions DSH owns instead |
 | [Paperspace](docs/features/paperspace.md) | the `Papers` tab and sidebar pane, reader, translation, architecture, operations |
 | [Tasks](docs/features/tasks.md) | the `Tasks` tab: board, list, archive, due dates, tags, subtasks, data layer |
 | [Integrations](docs/integrations.md) | companion plugins, and the DSH seams each feature consumes |
@@ -108,8 +109,8 @@ npm run verify:sidebar   # build first: right-Sidebar wiring harness (no test fr
 
 ## Known limitations
 
-- The width control is browser-only: it rewrites a CSS variable in the page and remembers the
-  value in `localStorage`, so it is per browser profile.
+- The content-width setting is browser-only: it rewrites a CSS variable in the page and remembers the
+  value in `localStorage`, so it is per browser profile. Its control lives in Settings → UnPlugin.
 - Storage-path changes for paperspace and the task board are saved but take
   effect on the next `dsh web` restart.
 - A gateway in front of DSH is equivalent to exposing remote code execution:

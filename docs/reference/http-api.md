@@ -35,7 +35,8 @@ removed, because DSH owns them:
   surface, so the tab, the client modules and both routes are gone.
 
 No code path in this bundle launches an OS program on the workspace any more, and the bundle row serves
-nothing over HTTP. What remains of the row is the browser-only content-width control. See
+nothing over HTTP. What remains of the row is the browser-only content-width preference (applied at
+startup) and its UnPlugin settings block. See
 [Toolbar actions](../features/toolbar-actions.md).
 
 ## Paperspace

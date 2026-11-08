@@ -53,8 +53,10 @@ host)`); browser half: `src/client/paperspace/`.
   which the chip shows the paper title and clicking again rebinds. Because dynamic plugins cannot
   import `react-dom`, the chip node is reparented onto the hero row with plain DOM calls.
 - **Settings** — `settings-page.tsx` fills the **UnPlugin** section (`settings.section`, `order:
-  45`, label `UnPlugin`), which paperspace owns and the tasks feature appends to: enable toggle,
-  storage paths, translation-model pickers, proxy, and an advanced block with the worker tunables.
+  45`, label `UnPlugin`), which paperspace owns: the bundle-level **界面显示** block (content width,
+  hide New Session button), then the paperspace block (enable toggle, storage paths,
+  translation-model pickers, proxy, and an advanced block with the worker tunables), and the tasks
+  feature appends its own block last.
   The page mounts *outside* the tab, so it wraps itself in `.dsh-paperspace` to pick up the scoped
   stylesheet.
 - **Localization** — shell labels come from locale namespace `dsh-unknownue-plugins.paperspace`

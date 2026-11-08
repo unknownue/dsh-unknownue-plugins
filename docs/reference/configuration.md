@@ -2,7 +2,7 @@
 
 Everything this bundle can be told to do, and where each setting lives. Configuration stacks in three layers:
 
-1. **Bundle patch** — `cordis.patch.yml` ships inside the package and inserts three host rows: `dsh-unknownue-plugins` (the client-side width control; its host half is inert), `paperspace`, and `tasks`. It applies wherever the bundle is installed (see [Integrations](../integrations.md)).
+1. **Bundle patch** — `cordis.patch.yml` ships inside the package and inserts three host rows: `dsh-unknownue-plugins` (applies the browser-local width preference at startup; its host half is otherwise inert), `paperspace`, and `tasks`. It applies wherever the bundle is installed (see [Integrations](../integrations.md)).
 2. **Your patch layer** — a profile's `cordis.patch.yml`, and above it `<dsh home>/cordis.patch.yml`, patch those rows by `id`. See [Overriding in a profile](#overriding-in-a-profile).
 3. **Runtime settings and browser preferences** — the paperspace and tasks Settings sections persist to `<dsh home>/<feature>/settings.json`, while pure-UI preferences live in the browser's `localStorage` / `sessionStorage`. See [Paperspace settings file](#paperspace-settings-file) and [Browser-local preferences](#browser-local-preferences).
 
@@ -93,7 +93,8 @@ None of these reach the host: they are read and written by the browser half only
 
 | what | storage and key | scope | reset |
 |------|-----------------|-------|-------|
-| Chat/content column width | `localStorage` `dsh-unknownue-plugins:contentWidthPct` | Global per browser. Default 100 (%), range 50–150 in 1% steps, applied as the `--dsh-chat-content-width` CSS variable. | The dialog's "Reset 100%" button writes 100. |
+| Chat/content column width | `localStorage` `dsh-unknownue-plugins:contentWidthPct` | Global per browser. Default 100 (%), range 50–150 in 1% steps, applied as the `--dsh-chat-content-width` CSS variable. | Settings → UnPlugin → 界面显示: the slider writes on change, **恢复 100%** writes 100. |
+| Hide DSH's New Session button | `localStorage` `dsh-unknownue-plugins:hideNewSessionButton` | Global per browser. `"1"` hides the sidebar/titlebar `_newSession` button (one injected rule); any other value shows it (default). Shortcuts and session creation stay available. | Uncheck in Settings → UnPlugin → 界面显示: the rule tag is removed. |
 | Paperspace light/dark preference | `localStorage` `dsh-unknownue-plugins/paperspace:theme` | Global per browser. `auto` (default, follows DSH) / `light` / `dark`. | Removing the key returns to `auto`. |
 | Paperspace reader font size | `localStorage` `dsh-unknownue-plugins/paperspace:fontSize` | Global per browser. Pixels, default 16, range 12–26. | Out-of-range values are ignored and the default is used. |
 | Paperspace reader content width | `localStorage` `dsh-unknownue-plugins/paperspace:contentWidthPct` | Global per browser. Percent, default 100, range 40–100. | Same fallback as above. |

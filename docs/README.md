@@ -7,7 +7,7 @@ details live here.
 
 | Document | Answers |
 | --- | --- |
-| [features/toolbar-actions.md](features/toolbar-actions.md) | the content-width control, and the header actions DSH owns instead |
+| [features/toolbar-actions.md](features/toolbar-actions.md) | the UnPlugin UI preferences (content width, hide New Session button), and the header actions DSH owns instead |
 | [features/paperspace.md](features/paperspace.md) | the `Papers` tab and right-Sidebar pane: library, reader, translation, architecture, operations |
 | [features/tasks.md](features/tasks.md) | the `Tasks` tab: board, list, archived browser, due dates, tags, subtasks, data layer |
 | [integrations.md](integrations.md) | companion plugins (SSH remote workspaces, remote access) and the DSH seams each feature consumes |

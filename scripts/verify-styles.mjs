@@ -13,19 +13,20 @@
  * attribute, not by closure (see `@deepseek-ai/dsh-client-modules`, browser
  * half):
  *
- *   claimStyles(id)      style:not([data-plugin])  → stamp data-plugin=<whoever
- *                        materialized last>
- *   removeOwnedStyles(id) style[data-plugin=<id>]   → remove
+ *   claimStyles(id, before)  untagged tags a factory injects DURING its own
+ *                            materialization  → stamp data-plugin=<that id>
+ *   removeOwnedStyles(id)    style[data-plugin=<id>] → remove
  *
- * So a stylesheet injected WITHOUT `data-plugin` does not stay unowned: the next
- * plugin whose bundle materializes adopts it for itself, and the tag is deleted
- * the moment THAT plugin is code-reloaded (`rebuilt` frame), pruned from the
- * graph, or has its graph revision changed. The plugin that injected it never
- * reloads, so nothing re-injects it — the CSS is gone for the rest of the page's
- * life. The visible symptom for the content-width control is a dialog that
- * suddenly paints inline under its own button, because `.dmw-overlay
- * {position:fixed}` no longer exists. A page refresh hides the defect until the
- * next reload of whoever adopted the tag.
+ * The rule moved between DSH lines: 0.1.x adopted every untagged tag present when
+ * the next plugin materialized; 0.2.x narrowed `claimStyles` to the pre/post
+ * delta, so a PRE-EXISTING untagged sheet is left alone (and never cleaned up).
+ * Either way an untagged sheet is not a stable choice: on 0.1.x it was adopted and
+ * deleted with that plugin, on 0.2.x it survives reloads and a re-applied bundle
+ * duplicates it. Tagging every sheet keeps `removeOwnedStyles(id)` pairing
+ * correct, so a reloaded bundle refreshes its tags in place.
+ *
+ * The visible symptom when the shared sheet is lost is an unstyled
+ * content-width slider row (`.dmw-width*` rules gone).
  *
  * The harness does what a `tsc` pass cannot:
  *   1. materializes the BUILT client bundle exactly as DSH's module table does
@@ -33,8 +34,9 @@
  *      runs the plugin's own `apply(ctx)` against a recording stub context, and
  *      inventories every `<style>` it injected;
  *   2. drives the REAL `dsh-client-modules` browser half over a two-entry boot
- *      graph and shows the adopt-then-delete sequence on a control tag, while
- *      the plugin's own tags survive it;
+ *      graph and shows the shipped ownership sequence: a pre-existing untagged
+ *      sheet is not adopted, a factory-injected one is claimed and removed with
+ *      its plugin, and the plugin's own tags survive that reload;
  *   3. re-runs `apply` to prove a second activation does not duplicate sheets.
  *
  * Re-run it after a DSH upgrade: the adoption rule lives in the module system,
@@ -271,8 +273,8 @@ check(
 const mainSheet = injected.find(element => element.getAttribute('data-dsh-unknownue-styles') !== null);
 check('the shared sheet exists', mainSheet !== undefined);
 check(
-  'the shared sheet still carries the modal rule it must protect',
-  mainSheet?.textContent.includes('.dmw-overlay{position:fixed'),
+  'the shared sheet still carries the width-block rules it must protect',
+  mainSheet?.textContent.includes('.dmw-width{display:flex'),
 );
 const widthOverride = injected.find(element => element.hasAttribute('data-width-override'));
 check('the width override tag is owned too', widthOverride !== undefined && tagged(widthOverride));
@@ -308,8 +310,8 @@ check(
   afterReload.map(element => pluginTagOf(element) ?? '(untagged)').join(', '),
 );
 check(
-  'the reloaded bundle keeps the modal rule',
-  afterReload.some(element => element.textContent.includes('.dmw-overlay{position:fixed')),
+  'the reloaded bundle keeps the width-block rules',
+  afterReload.some(element => element.textContent.includes('.dmw-width{display:flex')),
 );
 
 // The live tags after the reload — what the module-system section below checks
@@ -381,38 +383,102 @@ if (dshClientModules === undefined) {
     loadBundle: async () => {},
   });
   system.register({ id: THIS_PLUGIN, factory: () => ({}) });
-  system.register({ id: THIEF, factory: () => ({}) });
+  // DSH 0.2.x claims only the untagged tags a factory injects DURING its own
+  // materialization (the pre-existing snapshot is deliberately left alone), so
+  // model both shapes: the thief injects one sheet in its factory, and an
+  // unrelated untagged sheet is already present before materialization.
+  let thiefSheet;
+  system.register({
+    id: THIEF,
+    factory: () => {
+      thiefSheet = fakeElement('style');
+      thiefSheet.textContent = '/* thief */';
+      document.head.appendChild(thiefSheet);
+      return {};
+    },
+  });
 
-  // The control is what the plugin used to inject: the very same markup, minus
-  // the ownership attribute.
-  const control = fakeElement('style');
-  control.textContent = '.dmw-overlay{position:fixed;inset:0}';
-  document.head.appendChild(control);
-  const controlPicked = () => control.getAttribute('data-plugin');
+  const foreign = fakeElement('style');
+  foreign.textContent = '.dmw-width{display:flex;flex-direction:column}';
+  document.head.appendChild(foreign);
+  const pluginOwnedBefore = [...styles].filter(tagged).length;
 
   system.materialize(THIEF);
-  const ownedBefore = [...styles].filter(tagged).length;
   check(
-    'an untagged stylesheet is adopted by the plugin that materializes next',
-    controlPicked() === THIEF,
-    `data-plugin=${controlPicked() ?? '(untagged)'}`,
+    'a pre-existing untagged stylesheet is NOT adopted (0.2.x narrowed claimStyles)',
+    foreign.getAttribute('data-plugin') === null,
+    `data-plugin=${foreign.getAttribute('data-plugin') ?? '(untagged)'}`,
+  );
+  check(
+    'a stylesheet injected BY the materializing factory IS claimed',
+    thiefSheet?.getAttribute('data-plugin') === THIEF,
+    `data-plugin=${thiefSheet?.getAttribute('data-plugin') ?? '(untagged)'}`,
   );
   check(
     "the plugin's own tagged sheets are NOT adopted",
-    [...styles].filter(tagged).length === ownedBefore && ownedBefore > 0,
-    `${ownedBefore} tag(s) still owned by ${PLUGIN_ID}`,
+    [...styles].filter(element => tagged(element) && element !== thiefSheet).length === pluginOwnedBefore
+      && pluginOwnedBefore > 0,
+    `${pluginOwnedBefore} tag(s) still owned by ${PLUGIN_ID}`,
   );
 
   await system.entries.reload(THIEF, 'rev-2').catch(() => {
     // This harness has no Cordis Loader, so the reconciliation queued behind the
     // reload rejects. The style removal runs BEFORE it, which is the whole point.
   });
-  check('…and the adopted sheet is deleted when that plugin reloads', control.removed === true && !styles.includes(control));
+  check('…and the claimed sheet is deleted when that plugin reloads', thiefSheet?.removed === true && !styles.includes(thiefSheet));
+  check(
+    'a pre-existing untagged sheet is untouched by another plugin reload',
+    foreign.removed !== true && styles.includes(foreign),
+  );
   check(
     "the plugin's own sheets survive another plugin's reload",
-    styles.includes(liveMainSheet) && liveMainSheet.textContent.includes('.dmw-overlay{position:fixed'),
+    styles.includes(liveMainSheet) && liveMainSheet.textContent.includes('.dmw-width{display:flex'),
   );
   check('the width override survives too', liveWidthOverride.removed !== true && styles.includes(liveWidthOverride));
+}
+
+// ── 4. browser-local preference rules: hide the New Session button ─────────
+//
+// The preference reads `window.localStorage` at apply time, so a stubbed storage
+// drives the same code path a browser takes: the rule tag exists only while the
+// option is on, carries `data-plugin`, and targets the CSS-module button class.
+
+const originalBrowserStorage = globalThis.window.localStorage;
+const hideTagIn = () => styles.find(element => element.hasAttribute('data-hide-new-session'));
+try {
+  styles.length = 0;
+  globalThis.window.localStorage = {
+    getItem: key => (key === 'dsh-unknownue-plugins:hideNewSessionButton' ? '1' : null),
+    setItem: () => {},
+    removeItem: () => {},
+  };
+  materialize();
+  const hideTag = hideTagIn();
+  check(
+    'hide-New-Session: the rule tag exists while the preference is on',
+    hideTag !== undefined,
+  );
+  check(
+    'hide-New-Session: the tag is owned by this bundle',
+    hideTag !== undefined && tagged(hideTag),
+  );
+  check(
+    'hide-New-Session: the rule targets the module-styled button only',
+    hideTag?.textContent.includes('button[class*="_newSession"]')
+      && !hideTag.textContent.includes('_brand'),
+    hideTag?.textContent,
+  );
+
+  styles.length = 0;
+  globalThis.window.localStorage = {
+    getItem: () => null,
+    setItem: () => {},
+    removeItem: () => {},
+  };
+  materialize();
+  check('hide-New-Session: no rule tag ships by default', hideTagIn() === undefined);
+} finally {
+  globalThis.window.localStorage = originalBrowserStorage;
 }
 
 console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`);

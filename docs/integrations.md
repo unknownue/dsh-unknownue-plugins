@@ -83,13 +83,12 @@ crash.
 | `ctx.webServer.register` (exact-path routes) | paperspace, tasks | every loopback HTTP route |
 | `ctx.effect` | all host modules | lifecycle / disposal of routes, workers, watchers |
 | `ctx.slots` → `conversation.session.header.actions` | paper badge | session header badge (this bundle registers no other header action: opening the workspace in a file manager or a terminal comes from DSH's own open-in-app plugin) |
-| `ctx.slots` → `sidebar.footer.action` | content width control | sidebar footer button |
 | `ctx.slots` → `conversation.view` | Tasks, Papers tabs | conversation view tabs (orders 25 / 30) |
 | `ctx.slots` → `conversation.input.dock` | paper-link picker | composer dock control (blank sessions only) |
-| `ctx.slots` → `settings.section` | UnPlugin settings page | DSH Settings section hosting all feature options |
+| `ctx.slots` → `settings.section` | UnPlugin settings page | DSH Settings section hosting all feature options (content width, hide New Session button, Paperspace, task board) |
 | `ctx.inject(['slots', 'sidebarRightTabs'])`, `sidebar.right.pane.tab`, `sidebar.right.pane.tab.title`, `ctx.inject(['sidebarRight'])` | paperspace sidebar | right-Sidebar page tab (inert without the column) |
 | `ctx.locale.register` / `bind` | all UI features | English + Chinese dictionaries |
-| `ctx.sessions`, `ctx.workspaces` | toolbar actions, paperspace | session cwd resolution, native paper sessions |
+| `ctx.sessions`, `ctx.workspaces` | paperspace | session cwd resolution, native paper sessions |
 | `dsh.client` manifest + `require.resolve(<name>/package.json)` | client module discovery | the bundle row `name` must stay the package name |
 
 `scripts/verify-sidebar.mjs` is the cheapest check for the right-Sidebar rows

@@ -14,6 +14,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { modelsUrl, settingsUrl } from './api';
 import TasksSettingsSection from '../tasks/settings-page';
+import { InterfaceSettings } from '../toolbar/UiSettings';
 
 export interface TranslateModelSelection {
   provider: string;
@@ -233,6 +234,8 @@ export default function UnknownueSettingsPage() {
           </p>
         )}
         {err && <p className="form-error">⚠ {err}</p>}
+
+        <InterfaceSettings />
 
         <section className="bundle-section">
           <div className="bundle-section-head">

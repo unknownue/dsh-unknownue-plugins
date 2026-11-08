@@ -13,14 +13,15 @@ One npm package serves the whole bundle:
   `@deepseek-ai/dsh-client-ui-conversation` and `@deepseek-ai/dsh-client-ui-sidebar`).
   DSH discovers it through `require.resolve(<row name> + "/package.json")`, so the
   row `name` must stay the package name — never a subpath.
-- **Feature flags** — the client entry wires every surface (`slot` registrations
-  for the sidebar footer, the two conversation tabs and the settings section), so
-  a build without a given DSH slot degrades to an inert feature instead of failing.
+- **Feature flags** — the client entry applies the stored width preference and wires
+  every remaining surface (the two conversation tabs and the UnPlugin settings section,
+  which hosts the content-width block), so a build without a given DSH slot degrades to
+  an inert feature instead of failing.
 
 ```mermaid
 flowchart LR
     subgraph browser["Browser — lib/client.js"]
-        ui["slot registrations<br/>tabs · sidebar footer · settings"]
+        ui["slot registrations<br/>tabs · settings"]
     end
     subgraph proc["DSH host process"]
         row["bundle row<br/>lib/index.js (inert)"]
@@ -42,9 +43,9 @@ flowchart LR
 | `src/host/http.ts` | shared HTTP helpers for the loopback routes the feature rows register: `json`, `readBody`, `isLoopback`, `isLoopbackHost`, `messageOf` |
 | `src/host/paperspace/**` | paperspace host half: routes, settings, schema, domain, worker, runtime |
 | `src/host/tasks/**` | task-board host half: routes, store, schema, settings |
-| `src/client/index.tsx` | client entry: the width control, tab wiring, shared CSS injection |
+| `src/client/index.tsx` | client entry: startup width application, tab wiring, shared CSS injection |
 | `src/client/plugin-id.ts` | the bundle's client module id, carried by every injected stylesheet as `data-plugin` |
-| `src/client/toolbar/**` | content-width control |
+| `src/client/toolbar/**` | bundle UI preferences (content width, hide New Session button) plus the UnPlugin settings block |
 | `src/client/paperspace/**`, `src/client/tasks/**` | the Papers and Tasks tabs, their settings pages and stylesheets |
 | `scripts/verify-sidebar.mjs` | headless harness for the paperspace right-Sidebar wiring (development-only, not published) |
 | `scripts/verify-styles.mjs` | headless harness for injected-stylesheet ownership against DSH's real HMR bookkeeping |
@@ -172,15 +173,16 @@ attribute, not by closure**:
 
 | Step | What DSH does |
 |---|---|
-| a bundle materializes | `claimStyles(id)` stamps `data-plugin=<that plugin>` on every tag matching `style:not([data-plugin])` — i.e. it adopts *your* untagged sheets |
-| that plugin is code-reloaded (HMR `rebuilt` frame), pruned from the graph, or gets a new graph revision | `removeOwnedStyles(id)` deletes every `style[data-plugin=<id>]` — including the ones it adopted from you |
+| a factory materializes | `claimStyles(id, before)` stamps `data-plugin=<that plugin>` only on untagged tags the factory injected **during** its own materialization; tags present beforehand are left alone (0.1.x adopted all of them; 0.2.x narrowed the rule) |
+| that plugin is code-reloaded (HMR `rebuilt` frame), pruned from the graph, or gets a new graph revision | `removeOwnedStyles(id)` deletes every `style[data-plugin=<id>]` |
 
-So an untagged sheet is not unowned, merely unlabelled: it is adopted by
-whichever plugin materializes next, and **deleted the next time that plugin
-reloads**. This bundle is not reloaded by then, nothing re-injects the CSS, and
-the surface stays unstyled until a page refresh. The observed symptom (content
-width control) was a dialog that suddenly painted inline under its own button,
-because `.dmw-overlay{position:fixed}` was gone; the same mechanism can strip the
+`data-plugin` is therefore required on every sheet this bundle injects, and the
+failure mode differs by line: on 0.1.x an untagged sheet of ours was adopted by
+whichever plugin materialized next and **deleted with that plugin** (this bundle
+is not reloaded by then, so the CSS never came back until a page refresh); on
+0.2.x it is never removed, so a reloaded bundle appends a **stale duplicate** while
+the original keeps winning. The observed symptom (content width) was a settings
+slider row that lost its `.dmw-width*` styling; the same mechanism can strip the
 paperspace or tasks sheets.
 
 Every sheet this bundle injects therefore declares `data-plugin={PLUGIN_ID}`
@@ -188,23 +190,25 @@ Every sheet this bundle injects therefore declares `data-plugin={PLUGIN_ID}`
 place helpers (`ensureStyles()` in `index.tsx`, and the per-tab copies in
 `paperspace/index.tsx` / `tasks/index.tsx`). Keep their identity attributes
 (`data-dsh-unknownue-styles`, `data-plugin-css`, `data-width-override`) — they
-are how a later `apply()` finds the tag again; `data-plugin` is only the
-ownership contract. `npm run verify:styles` fails if a sheet ships without it.
+are how a later `apply()` finds the tag again; `data-plugin` is the ownership
+contract. `npm run verify:styles` fails if a sheet ships without it.
+
 
 ### Modal mask blur
 
-Both masks in this bundle (`.tk-mask` in `tasks/styles.css`, `.dmw-mask` in
-`client/index.tsx`) pin `backdrop-filter: blur(2px)` directly. They used to take
-the blur from DSH's `--dsw-mask-blur`, which is why the blur disappeared without
-any change in this repository:
+The task editor/archive mask (`.tk-mask` in `tasks/styles.css`) pins
+`backdrop-filter: blur(2px)` directly. It used to take the blur from DSH's
+`--dsw-mask-blur`, which is why the blur disappeared without any change in this
+repository:
 
 | DSH line | `--dsw-mask-blur` | Result |
 |---|---|---|
 | 0.1.x | `blur(2px)` | mask tinted **and** blurred |
 | 0.2.x | `none` | mask tinted only, backdrop sharp |
 
-Neither mask reads the token any more. DSH's own `Modal` inherits the same
-`none`, so the blur deliberately exceeds the stock dialog look.
+The bundle reads the token nowhere any more (the old content-width dialog and its
+`.dmw-mask` were removed when the setting moved into UnPlugin). DSH's own `Modal`
+inherits the same `none`, so the blur deliberately exceeds the stock dialog look.
 
 ## Adding a feature
 
